@@ -107,6 +107,51 @@ Spatio-Temporal-Traffic-Violation-Detection/
 
 ---
 
+# 📸 Project Screenshots
+
+## Dashboard
+
+![Dashboard](assets/screenshots/dashboard.png)
+
+## Dashboard Analytics
+
+![Dashboard Analytics](assets/screenshots/dashboard2.png)
+
+## Helmetless Rider Detection
+
+![Helmetless Detection](assets/screenshots/helmetless.jpeg)
+
+## Mobile Phone Usage Detection
+
+![Mobile Phone Detection](assets/screenshots/mobile_phone.jpeg)
+
+## Triple Riding Detection
+
+![Triple Riding Detection](assets/screenshots/triple_riding.jpeg)
+
+## Traffic Violation Detection
+
+![Traffic Violation](assets/screenshots/violation.jpeg)
+
+## GNSS Map Visualization
+
+![GNSS Map](assets/screenshots/map.png)
+
+---
+
+# 🚀 Future Scope
+
+- Real-time HD video acquisition using IP cameras
+- Advanced multi-violation detection
+- Smart parking occupancy monitoring
+- Automatic Number Plate Recognition (ANPR)
+- Automated evidence generation
+- Traffic analytics dashboard
+- Edge AI deployment
+- Smart city integration
+
+---
+
 # 📸 Sample Outputs
 
 Sample screenshots of detections and dashboard analytics are available in the **assets/screenshots** folder.
@@ -144,7 +189,7 @@ Sample screenshots of detections and dashboard analytics are available in the **
 
 **Department of Electronics and Communication Engineering**
 
-**Saranathan College of Engineering**
+**Saranathan College of Engineering Trichy**
 
 ---
 
