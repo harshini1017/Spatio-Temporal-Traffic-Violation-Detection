@@ -141,14 +141,14 @@ Spatio-Temporal-Traffic-Violation-Detection/
 
 # 🚀 Future Scope
 
-- Real-time HD video acquisition using IP cameras
 - Advanced multi-violation detection
 - Smart parking occupancy monitoring
 - Automatic Number Plate Recognition (ANPR)
 - Automated evidence generation
-- Traffic analytics dashboard
+- Advanced Traffic analytics dashboard
 - Edge AI deployment
 - Smart city integration
+- Detection of high smoke emission in the environment
 
 ---
 
