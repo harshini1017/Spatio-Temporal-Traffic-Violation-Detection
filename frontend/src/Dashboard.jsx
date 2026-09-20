@@ -10,7 +10,6 @@ import {
   useLocation,
 } from "react-router-dom";
 
-import finalVideo from "./assets/final_video.mp4";
 
 /* =========================================================
    CONFIG
@@ -19,7 +18,7 @@ import finalVideo from "./assets/final_video.mp4";
 const API_BASE =
   "https://spatio-temporal-traffic-violation.onrender.com";
 
-const VIDEO_URL = finalVideo;
+const VIDEO_URL = "/final_video.mp4";
 
 /* Saranathan / Panjappur reference location */
 const MAP_LAT = 10.757285;
@@ -758,7 +757,7 @@ function DashboardPage({
                 <span>
                   Verify that
                   <b>
-                    frontend/public/output_video.mp4
+                    frontend/public/final_video.mp4
                   </b>
                   is included in the Vercel deployment.
                 </span>
