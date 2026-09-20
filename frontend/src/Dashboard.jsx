@@ -43,8 +43,7 @@ export default function Dashboard() {
   const [selectedEvidence, setSelectedEvidence] =
     useState(null);
 
-  const [videoSource, setVideoSource] =
-    useState(VIDEO_URL);
+  const videoSource = VIDEO_URL;
 
   const [videoError, setVideoError] =
     useState(false);
