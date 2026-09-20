@@ -10,6 +10,8 @@ import {
   useLocation,
 } from "react-router-dom";
 
+import finalVideo from "./assets/final_video.mp4";
+
 /* =========================================================
    CONFIG
 ========================================================= */
@@ -17,7 +19,7 @@ import {
 const API_BASE =
   "https://spatio-temporal-traffic-violation.onrender.com";
 
-const VIDEO_URL = "/final_video.mp4";
+const VIDEO_URL = finalVideo;
 
 /* Saranathan / Panjappur reference location */
 const MAP_LAT = 10.757285;
@@ -43,7 +45,6 @@ export default function Dashboard() {
   const [selectedEvidence, setSelectedEvidence] =
     useState(null);
 
-  const videoSource = VIDEO_URL;
 
   const [videoError, setVideoError] =
     useState(false);
@@ -350,7 +351,7 @@ export default function Dashboard() {
                 "Saranathan Junction, Trichy"
               }
               videoRef={videoRef}
-              videoSource={videoSource}
+              videoSource={VIDEO_URL}
               videoError={videoError}
               videoReady={videoReady}
               onVideoError={
@@ -707,12 +708,11 @@ function DashboardPage({
 
             <video
               ref={videoRef}
-              key={videoSource}
               className="main-video"
               controls
               playsInline
               preload="auto"
-              src={VIDEO_URL}
+              src={videoSource}
               onLoadedData={
                 onVideoLoaded
               }
@@ -758,7 +758,7 @@ function DashboardPage({
                 <span>
                   Verify that
                   <b>
-                    frontend/public/final_video.mp4
+                    frontend/public/output_video.mp4
                   </b>
                   is included in the Vercel deployment.
                 </span>
