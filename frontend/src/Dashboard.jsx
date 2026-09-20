@@ -12,12 +12,12 @@ function Dashboard({ page = "dashboard" }) {
   const [search, setSearch] = useState("");
   const [selectedEvidence, setSelectedEvidence] = useState(null);
 
-  // =========================
-  // BACKEND CONNECTION
-  // =========================
+  // =========================================================
+  // BACKEND DATA
+  // =========================================================
 
   useEffect(() => {
-    const fetchViolations = async () => {
+    const loadViolations = async () => {
       try {
         setLoading(true);
 
@@ -27,16 +27,18 @@ function Dashboard({ page = "dashboard" }) {
 
         if (!response.ok) {
           throw new Error(
-            `Backend returned ${response.status}`
+            `Backend error: ${response.status}`
           );
         }
 
         const data = await response.json();
 
-        setViolations(Array.isArray(data) ? data : []);
+        setViolations(
+          Array.isArray(data) ? data : []
+        );
       } catch (error) {
         console.error(
-          "RoadSense backend connection error:",
+          "RoadSense backend connection failed:",
           error
         );
 
@@ -46,57 +48,39 @@ function Dashboard({ page = "dashboard" }) {
       }
     };
 
-    fetchViolations();
+    loadViolations();
   }, []);
 
-  // =========================
-  // DATA HELPERS
-  // =========================
+  // =========================================================
+  // ACTUAL CSV FIELD MAPPING
+  // =========================================================
 
   const getViolationType = (row) => {
-    return (
-      row.violation_type ||
-      row.violation ||
-      row.type ||
-      row.event_type ||
-      "Traffic Event"
-    );
+    return row.Violation || "Unknown";
   };
 
   const getTimestamp = (row) => {
-    return (
-      row.timestamp ||
-      row.time ||
-      row.datetime ||
-      row.date ||
-      "—"
-    );
+    return row.Time || "—";
   };
 
   const getVehicle = (row) => {
-    return (
-      row.vehicle_number ||
-      row.plate_number ||
-      row.license_plate ||
-      row.vehicle ||
-      row.plate ||
-      "Not available"
-    );
+    return row.Plate || "UNKNOWN";
+  };
+
+  const getTrackId = (row) => {
+    return row.Track_ID || "NA";
+  };
+
+  const getLocation = (row) => {
+    return row.Location || "Unknown location";
   };
 
   const getSnapshot = (row) => {
-    const value =
-      row._snapshot ||
-      row.snapshot ||
-      row.image ||
-      row.evidence ||
-      "";
-
-    if (!value) {
+    if (!row.Snapshot) {
       return null;
     }
 
-    const filename = String(value)
+    const filename = String(row.Snapshot)
       .replaceAll("\\", "/")
       .split("/")
       .pop();
@@ -110,12 +94,57 @@ function Dashboard({ page = "dashboard" }) {
     )}`;
   };
 
-  // =========================
-  // FILTER
-  // =========================
+  // =========================================================
+  // COUNTS
+  // =========================================================
+
+  const counts = useMemo(() => {
+    const result = {
+      total: violations.length,
+      helmetless: 0,
+      triple: 0,
+      mobile: 0,
+      wrongWay: 0,
+    };
+
+    violations.forEach((row) => {
+      const type = String(
+        row.Violation || ""
+      ).toLowerCase();
+
+      if (type === "helmetless") {
+        result.helmetless += 1;
+      }
+
+      if (type === "triple_riding") {
+        result.triple += 1;
+      }
+
+      if (
+        type === "mobile_usage" ||
+        type === "mobile_phone" ||
+        type === "phone_usage" ||
+        type === "mobile"
+      ) {
+        result.mobile += 1;
+      }
+
+      if (type === "wrong_way") {
+        result.wrongWay += 1;
+      }
+    });
+
+    return result;
+  }, [violations]);
+
+  // =========================================================
+  // SEARCH
+  // =========================================================
 
   const filteredViolations = useMemo(() => {
-    const query = search.toLowerCase().trim();
+    const query = search
+      .toLowerCase()
+      .trim();
 
     if (!query) {
       return violations;
@@ -130,77 +159,18 @@ function Dashboard({ page = "dashboard" }) {
     );
   }, [violations, search]);
 
-  // =========================
-  // COUNTS
-  // =========================
-
-  const counts = useMemo(() => {
-    const result = {
-      total: violations.length,
-      helmet: 0,
-      mobile: 0,
-      excessive: 0,
-      wrongWay: 0,
-    };
-
-    violations.forEach((row) => {
-      const type =
-        getViolationType(row).toLowerCase();
-
-      if (type.includes("helmet")) {
-        result.helmet += 1;
-      }
-
-      if (
-        type.includes("phone") ||
-        type.includes("mobile")
-      ) {
-        result.mobile += 1;
-      }
-
-      if (
-        type.includes("triple") ||
-        type.includes("rider") ||
-        type.includes("excess")
-      ) {
-        result.excessive += 1;
-      }
-
-      if (type.includes("wrong")) {
-        result.wrongWay += 1;
-      }
-    });
-
-    return result;
-  }, [violations]);
-
-  // =========================
-  // NAVIGATION
-  // =========================
-
-  const navigation = [
-    {
-      label: "Dashboard",
-      path: "/dashboard",
-      key: "dashboard",
-    },
-    {
-      label: "Violations",
-      path: "/violations",
-      key: "violations",
-    },
-  ];
-
-  // =========================
+  // =========================================================
   // CSV EXPORT
-  // =========================
+  // =========================================================
 
   const exportCSV = () => {
     if (!violations.length) {
       return;
     }
 
-    const headers = Object.keys(violations[0]);
+    const headers = Object.keys(
+      violations[0]
+    );
 
     const rows = [
       headers.join(","),
@@ -208,7 +178,8 @@ function Dashboard({ page = "dashboard" }) {
       ...violations.map((row) =>
         headers
           .map((header) => {
-            const value = row[header] ?? "";
+            const value =
+              row[header] ?? "";
 
             return `"${String(value).replaceAll(
               '"',
@@ -226,9 +197,11 @@ function Dashboard({ page = "dashboard" }) {
       }
     );
 
-    const url = URL.createObjectURL(blob);
+    const url =
+      URL.createObjectURL(blob);
 
-    const link = document.createElement("a");
+    const link =
+      document.createElement("a");
 
     link.href = url;
     link.download =
@@ -241,33 +214,41 @@ function Dashboard({ page = "dashboard" }) {
     URL.revokeObjectURL(url);
   };
 
-  // =========================
-  // PAGE CONTENT
-  // =========================
+  // =========================================================
+  // NAVIGATION
+  // =========================================================
+
+  const navigation = [
+    {
+      label: "Dashboard",
+      path: "/dashboard",
+      key: "dashboard",
+    },
+    {
+      label: "Violations",
+      path: "/violations",
+      key: "violations",
+    },
+  ];
 
   const isDashboard =
     page === "dashboard";
 
-  const title = isDashboard
-    ? "Mobility Intelligence Dashboard"
-    : "Traffic Violations";
-
-  const description = isDashboard
-    ? "Overview of vehicle activity, detected traffic events and system status."
-    : "Review and analyse traffic violations detected by the RoadSense Edge-AI system.";
+  // =========================================================
+  // UI
+  // =========================================================
 
   return (
     <div style={styles.app}>
 
-      {/* =====================================
+      {/* =====================================================
           SIDEBAR
-      ===================================== */}
+      ===================================================== */}
 
       <aside style={styles.sidebar}>
 
-        {/* BRAND */}
-
         <div style={styles.brand}>
+
           <div style={styles.brandMark}>
             R
           </div>
@@ -281,9 +262,8 @@ function Dashboard({ page = "dashboard" }) {
               Mobility Intelligence
             </div>
           </div>
-        </div>
 
-        {/* MAIN */}
+        </div>
 
         <div style={styles.sidebarSection}>
           MAIN
@@ -319,8 +299,6 @@ function Dashboard({ page = "dashboard" }) {
           ))}
         </nav>
 
-        {/* SIDEBAR BOTTOM */}
-
         <div style={styles.sidebarBottom}>
 
           <div style={styles.systemBox}>
@@ -344,11 +322,12 @@ function Dashboard({ page = "dashboard" }) {
           </div>
 
         </div>
+
       </aside>
 
-      {/* =====================================
-          MAIN CONTENT
-      ===================================== */}
+      {/* =====================================================
+          MAIN
+      ===================================================== */}
 
       <main style={styles.main}>
 
@@ -366,11 +345,15 @@ function Dashboard({ page = "dashboard" }) {
             </div>
 
             <h1 style={styles.title}>
-              {title}
+              {isDashboard
+                ? "Mobility Intelligence Dashboard"
+                : "Traffic Violations"}
             </h1>
 
             <p style={styles.description}>
-              {description}
+              {isDashboard
+                ? "Overview of vehicle activity, detected traffic events and system status."
+                : "Review and analyse traffic violations detected by the RoadSense Edge-AI system."}
             </p>
 
           </div>
@@ -382,12 +365,13 @@ function Dashboard({ page = "dashboard" }) {
 
         </header>
 
-        {/* =====================================
-            DASHBOARD PAGE
-        ===================================== */}
+        {/* ===================================================
+            DASHBOARD
+        =================================================== */}
 
         {isDashboard && (
           <>
+
             {/* HERO */}
 
             <section style={styles.hero}>
@@ -431,7 +415,7 @@ function Dashboard({ page = "dashboard" }) {
 
             </section>
 
-            {/* KPI */}
+            {/* KPI CARDS */}
 
             <section style={styles.kpiGrid}>
 
@@ -442,26 +426,26 @@ function Dashboard({ page = "dashboard" }) {
               />
 
               <KPI
-                label="Helmet Violations"
-                value={counts.helmet}
-                description="Helmet-related events"
+                label="Helmetless Riding"
+                value={counts.helmetless}
+                description="Helmet-related violations"
               />
 
               <KPI
-                label="Mobile Usage"
-                value={counts.mobile}
-                description="Phone-use events"
+                label="Triple Riding"
+                value={counts.triple}
+                description="Excess rider events"
               />
 
               <KPI
-                label="Excess Riders"
-                value={counts.excessive}
-                description="Multiple-rider events"
+                label="Wrong-Way Movement"
+                value={counts.wrongWay}
+                description="Direction violations"
               />
 
             </section>
 
-            {/* INTELLIGENCE + STATUS */}
+            {/* ANALYTICS + STATUS */}
 
             <section style={styles.twoColumn}>
 
@@ -473,20 +457,20 @@ function Dashboard({ page = "dashboard" }) {
                 />
 
                 <Bar
-                  label="Helmet Violations"
-                  value={counts.helmet}
+                  label="Helmetless Riding"
+                  value={counts.helmetless}
+                  total={counts.total}
+                />
+
+                <Bar
+                  label="Triple Riding"
+                  value={counts.triple}
                   total={counts.total}
                 />
 
                 <Bar
                   label="Mobile Phone Usage"
                   value={counts.mobile}
-                  total={counts.total}
-                />
-
-                <Bar
-                  label="Excess Rider Count"
-                  value={counts.excessive}
                   total={counts.total}
                 />
 
@@ -533,27 +517,41 @@ function Dashboard({ page = "dashboard" }) {
 
             </section>
 
-            {/* VIDEO */}
+            {/* =================================================
+                VIDEO
+            ================================================= */}
 
             <section style={styles.card}>
 
               <CardHeader
                 title="Processed Traffic Video"
-                subtitle="Reference output from the RoadSense pipeline"
+                subtitle="RoadSense detection output"
               />
 
-              <video
-                controls
-                preload="metadata"
-                style={styles.video}
-              >
-                <source
-                  src="/output_video.mp4"
-                  type="video/mp4"
-                />
+              <div style={styles.videoContainer}>
 
-                Your browser does not support video playback.
-              </video>
+                <video
+                  controls
+                  playsInline
+                  preload="metadata"
+                  style={styles.video}
+                  onError={(event) => {
+                    console.error(
+                      "Video loading error:",
+                      event
+                    );
+                  }}
+                >
+                  <source
+                    src="/output_video.mp4"
+                    type="video/mp4"
+                  />
+
+                  Your browser does not support
+                  HTML5 video.
+                </video>
+
+              </div>
 
             </section>
 
@@ -575,20 +573,37 @@ function Dashboard({ page = "dashboard" }) {
               <ViolationTable
                 violations={filteredViolations}
                 loading={loading}
-                getViolationType={getViolationType}
-                getTimestamp={getTimestamp}
-                getVehicle={getVehicle}
-                getSnapshot={getSnapshot}
-                onEvidence={setSelectedEvidence}
+                getViolationType={
+                  getViolationType
+                }
+                getTimestamp={
+                  getTimestamp
+                }
+                getVehicle={
+                  getVehicle
+                }
+                getTrackId={
+                  getTrackId
+                }
+                getLocation={
+                  getLocation
+                }
+                getSnapshot={
+                  getSnapshot
+                }
+                onEvidence={
+                  setSelectedEvidence
+                }
               />
 
             </section>
+
           </>
         )}
 
-        {/* =====================================
+        {/* ===================================================
             VIOLATIONS PAGE
-        ===================================== */}
+        =================================================== */}
 
         {!isDashboard && (
           <section style={styles.card}>
@@ -607,11 +622,27 @@ function Dashboard({ page = "dashboard" }) {
             <ViolationTable
               violations={filteredViolations}
               loading={loading}
-              getViolationType={getViolationType}
-              getTimestamp={getTimestamp}
-              getVehicle={getVehicle}
-              getSnapshot={getSnapshot}
-              onEvidence={setSelectedEvidence}
+              getViolationType={
+                getViolationType
+              }
+              getTimestamp={
+                getTimestamp
+              }
+              getVehicle={
+                getVehicle
+              }
+              getTrackId={
+                getTrackId
+              }
+              getLocation={
+                getLocation
+              }
+              getSnapshot={
+                getSnapshot
+              }
+              onEvidence={
+                setSelectedEvidence
+              }
             />
 
           </section>
@@ -631,9 +662,9 @@ function Dashboard({ page = "dashboard" }) {
 
       </main>
 
-      {/* =====================================
+      {/* =====================================================
           EVIDENCE MODAL
-      ===================================== */}
+      ===================================================== */}
 
       {selectedEvidence && (
         <div
@@ -655,7 +686,7 @@ function Dashboard({ page = "dashboard" }) {
               <div>
 
                 <div style={styles.modalEyebrow}>
-                  EVIDENCE
+                  TRAFFIC EVIDENCE
                 </div>
 
                 <h2 style={styles.modalTitle}>
@@ -684,7 +715,7 @@ function Dashboard({ page = "dashboard" }) {
                 src={getSnapshot(
                   selectedEvidence
                 )}
-                alt="Traffic event evidence"
+                alt="RoadSense traffic evidence"
                 style={styles.evidenceImage}
               />
             ) : (
@@ -694,6 +725,18 @@ function Dashboard({ page = "dashboard" }) {
             )}
 
             <div style={styles.evidenceInfo}>
+
+              <div>
+                <span>
+                  Violation
+                </span>
+
+                <strong>
+                  {getViolationType(
+                    selectedEvidence
+                  )}
+                </strong>
+              </div>
 
               <div>
                 <span>
@@ -709,7 +752,7 @@ function Dashboard({ page = "dashboard" }) {
 
               <div>
                 <span>
-                  Timestamp
+                  Time
                 </span>
 
                 <strong>
@@ -719,18 +762,32 @@ function Dashboard({ page = "dashboard" }) {
                 </strong>
               </div>
 
+              <div>
+                <span>
+                  Location
+                </span>
+
+                <strong>
+                  {getLocation(
+                    selectedEvidence
+                  )}
+                </strong>
+              </div>
+
             </div>
 
           </div>
+
         </div>
       )}
+
     </div>
   );
 }
 
-/* =========================================
+/* =========================================================
    KPI
-========================================= */
+========================================================= */
 
 function KPI({
   label,
@@ -756,9 +813,9 @@ function KPI({
   );
 }
 
-/* =========================================
+/* =========================================================
    CARD HEADER
-========================================= */
+========================================================= */
 
 function CardHeader({
   title,
@@ -783,9 +840,9 @@ function CardHeader({
   );
 }
 
-/* =========================================
-   STATUS ROW
-========================================= */
+/* =========================================================
+   STATUS
+========================================================= */
 
 function StatusRow({
   name,
@@ -808,9 +865,9 @@ function StatusRow({
   );
 }
 
-/* =========================================
+/* =========================================================
    BAR
-========================================= */
+========================================================= */
 
 function Bar({
   label,
@@ -857,9 +914,9 @@ function Bar({
   );
 }
 
-/* =========================================
+/* =========================================================
    TOOLBAR
-========================================= */
+========================================================= */
 
 function Toolbar({
   search,
@@ -889,9 +946,9 @@ function Toolbar({
   );
 }
 
-/* =========================================
+/* =========================================================
    VIOLATION TABLE
-========================================= */
+========================================================= */
 
 function ViolationTable({
   violations,
@@ -899,6 +956,8 @@ function ViolationTable({
   getViolationType,
   getTimestamp,
   getVehicle,
+  getTrackId,
+  getLocation,
   getSnapshot,
   onEvidence,
 }) {
@@ -928,15 +987,19 @@ function ViolationTable({
           <tr>
 
             <th style={styles.th}>
-              EVENT
+              VIOLATION
             </th>
 
             <th style={styles.th}>
-              VEHICLE
+              PLATE
             </th>
 
             <th style={styles.th}>
-              TIMESTAMP
+              TIME
+            </th>
+
+            <th style={styles.th}>
+              LOCATION
             </th>
 
             <th style={styles.th}>
@@ -956,9 +1019,14 @@ function ViolationTable({
               const snapshot =
                 getSnapshot(row);
 
+              const type =
+                getViolationType(row);
+
               return (
                 <tr
-                  key={index}
+                  key={`${getTimestamp(
+                    row
+                  )}-${index}`}
                   style={styles.tr}
                 >
 
@@ -976,9 +1044,11 @@ function ViolationTable({
                         }
                       />
 
-                      {getViolationType(
-                        row
-                      )}
+                      <span>
+                        {formatViolation(
+                          type
+                        )}
+                      </span>
 
                     </div>
 
@@ -990,6 +1060,10 @@ function ViolationTable({
 
                   <td style={styles.td}>
                     {getTimestamp(row)}
+                  </td>
+
+                  <td style={styles.td}>
+                    {getLocation(row)}
                   </td>
 
                   <td style={styles.td}>
@@ -1029,14 +1103,46 @@ function ViolationTable({
   );
 }
 
-/* =========================================
-   PROFESSIONAL LIGHT THEME
-========================================= */
+/* =========================================================
+   VIOLATION DISPLAY NAMES
+========================================================= */
+
+function formatViolation(type) {
+  const value = String(
+    type || ""
+  ).toLowerCase();
+
+  if (value === "helmetless") {
+    return "Helmetless Riding";
+  }
+
+  if (value === "triple_riding") {
+    return "Triple Riding";
+  }
+
+  if (value === "wrong_way") {
+    return "Wrong-Way Movement";
+  }
+
+  if (
+    value === "mobile_usage" ||
+    value === "mobile_phone" ||
+    value === "phone_usage"
+  ) {
+    return "Mobile Phone Usage";
+  }
+
+  return type || "Traffic Event";
+}
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles = {
   app: {
     minHeight: "100vh",
-    background: "#F6F8FB",
+    background: "#F4F7FA",
     color: "#172033",
     fontFamily:
       "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -1050,7 +1156,7 @@ const styles = {
     width: "250px",
     background: "#FFFFFF",
     borderRight:
-      "1px solid #E5E9EF",
+      "1px solid #E1E7ED",
     padding: "28px 18px",
     display: "flex",
     flexDirection: "column",
@@ -1067,27 +1173,30 @@ const styles = {
   },
 
   brandMark: {
-    width: "38px",
-    height: "38px",
-    borderRadius: "8px",
-    background: "#245B7A",
+    width: "40px",
+    height: "40px",
+    borderRadius: "9px",
+    background: "#145B8A",
     color: "#FFFFFF",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontWeight: 700,
     fontSize: "18px",
+    boxShadow:
+      "0 4px 10px rgba(20,91,138,0.18)",
   },
 
   brandName: {
     fontSize: "17px",
     fontWeight: 700,
     letterSpacing: "-0.3px",
+    color: "#172033",
   },
 
   brandSubtitle: {
     fontSize: "10px",
-    color: "#8A94A3",
+    color: "#8994A3",
     marginTop: "2px",
     letterSpacing: "0.3px",
   },
@@ -1095,7 +1204,7 @@ const styles = {
   sidebarSection: {
     fontSize: "10px",
     fontWeight: 700,
-    color: "#9AA3B1",
+    color: "#98A2B0",
     letterSpacing: "1.2px",
     padding:
       "0 12px 10px",
@@ -1105,7 +1214,7 @@ const styles = {
     width: "100%",
     border: "none",
     background: "transparent",
-    color: "#687386",
+    color: "#697586",
     padding: "12px",
     marginBottom: "4px",
     borderRadius: "7px",
@@ -1118,8 +1227,8 @@ const styles = {
   },
 
   navItemActive: {
-    background: "#EDF3F7",
-    color: "#245B7A",
+    background: "#EAF2F8",
+    color: "#145B8A",
     fontWeight: 600,
   },
 
@@ -1131,7 +1240,7 @@ const styles = {
   },
 
   navIndicatorActive: {
-    background: "#245B7A",
+    background: "#145B8A",
   },
 
   sidebarBottom: {
@@ -1143,9 +1252,9 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     padding: "13px",
-    background: "#F8FAFC",
+    background: "#F7F9FB",
     border:
-      "1px solid #E7EBF0",
+      "1px solid #E5EAF0",
     borderRadius: "8px",
   },
 
@@ -1153,17 +1262,18 @@ const styles = {
     width: "7px",
     height: "7px",
     borderRadius: "50%",
-    background: "#3C8062",
+    background: "#3B8064",
   },
 
   systemTitle: {
     fontSize: "12px",
     fontWeight: 600,
+    color: "#263246",
   },
 
   systemText: {
     fontSize: "10px",
-    color: "#8A94A3",
+    color: "#8B95A3",
     marginTop: "2px",
   },
 
@@ -1191,7 +1301,7 @@ const styles = {
   },
 
   breadcrumb: {
-    color: "#8D96A5",
+    color: "#8994A3",
     fontSize: "10px",
     fontWeight: 700,
     letterSpacing: "1px",
@@ -1209,7 +1319,7 @@ const styles = {
 
   description: {
     margin: "8px 0 0",
-    color: "#758094",
+    color: "#758194",
     fontSize: "13px",
   },
 
@@ -1219,7 +1329,7 @@ const styles = {
     gap: "7px",
     background: "#FFFFFF",
     border:
-      "1px solid #E3E7EC",
+      "1px solid #E1E7ED",
     borderRadius: "7px",
     padding: "9px 12px",
     fontSize: "11px",
@@ -1229,14 +1339,15 @@ const styles = {
   liveDot: {
     width: "7px",
     height: "7px",
-    background: "#3C8062",
+    background: "#3B8064",
     borderRadius: "50%",
   },
 
   hero: {
-    background: "#FFFFFF",
+    background:
+      "linear-gradient(135deg, #FFFFFF 0%, #F4F8FB 100%)",
     border:
-      "1px solid #E3E7EC",
+      "1px solid #DCE5EC",
     borderRadius: "10px",
     padding: "28px 30px",
     display: "flex",
@@ -1245,11 +1356,11 @@ const styles = {
     gap: "30px",
     marginBottom: "18px",
     boxShadow:
-      "0 3px 12px rgba(24,39,58,0.035)",
+      "0 4px 14px rgba(25,52,74,0.045)",
   },
 
   heroLabel: {
-    color: "#245B7A",
+    color: "#145B8A",
     fontSize: "10px",
     fontWeight: 700,
     letterSpacing: "1.1px",
@@ -1260,13 +1371,13 @@ const styles = {
     fontSize: "24px",
     lineHeight: 1.3,
     margin: 0,
-    color: "#182236",
+    color: "#17263A",
     letterSpacing: "-0.5px",
   },
 
   heroText: {
     maxWidth: "650px",
-    color: "#758094",
+    color: "#758194",
     fontSize: "13px",
     lineHeight: 1.7,
     margin: "13px 0 0",
@@ -1275,7 +1386,7 @@ const styles = {
   heroMetric: {
     minWidth: "180px",
     borderLeft:
-      "1px solid #E5E9EF",
+      "1px solid #DDE5EB",
     paddingLeft: "28px",
     display: "flex",
     flexDirection: "column",
@@ -1285,14 +1396,14 @@ const styles = {
   heroMetricLabel: {
     fontSize: "9px",
     fontWeight: 700,
-    color: "#8B95A5",
+    color: "#8994A3",
     letterSpacing: "1px",
   },
 
   heroMetricValue: {
     fontSize: "34px",
     fontWeight: 700,
-    color: "#245B7A",
+    color: "#145B8A",
     marginTop: "5px",
   },
 
@@ -1312,7 +1423,7 @@ const styles = {
   kpi: {
     background: "#FFFFFF",
     border:
-      "1px solid #E3E7EC",
+      "1px solid #E0E6EC",
     borderRadius: "9px",
     padding: "18px",
     boxShadow:
@@ -1321,12 +1432,12 @@ const styles = {
 
   kpiLabel: {
     fontSize: "11px",
-    color: "#788396",
+    color: "#788496",
     fontWeight: 600,
   },
 
   kpiValue: {
-    fontSize: "27px",
+    fontSize: "28px",
     fontWeight: 700,
     color: "#172033",
     marginTop: "8px",
@@ -1343,13 +1454,12 @@ const styles = {
     gridTemplateColumns:
       "1.4fr 1fr",
     gap: "18px",
-    marginBottom: "0",
   },
 
   card: {
     background: "#FFFFFF",
     border:
-      "1px solid #E3E7EC",
+      "1px solid #E0E6EC",
     borderRadius: "10px",
     padding: "22px",
     marginBottom: "18px",
@@ -1393,15 +1503,17 @@ const styles = {
 
   barTrack: {
     height: "7px",
-    background: "#EEF1F5",
+    background: "#EDF1F5",
     borderRadius: "5px",
     overflow: "hidden",
   },
 
   barFill: {
     height: "100%",
-    background: "#4A7898",
+    background: "#2E6F98",
     borderRadius: "5px",
+    transition:
+      "width 0.3s ease",
   },
 
   statusList: {
@@ -1422,7 +1534,7 @@ const styles = {
     width: "7px",
     height: "7px",
     borderRadius: "50%",
-    background: "#3C8062",
+    background: "#3B8064",
   },
 
   statusName: {
@@ -1433,16 +1545,25 @@ const styles = {
 
   statusValue: {
     fontSize: "10px",
-    color: "#3C8062",
+    color: "#3B8064",
     fontWeight: 600,
+  },
+
+  videoContainer: {
+    width: "100%",
+    background: "#101820",
+    borderRadius: "8px",
+    overflow: "hidden",
+    border:
+      "1px solid #DCE2E8",
   },
 
   video: {
     width: "100%",
-    maxHeight: "520px",
-    background: "#111827",
-    borderRadius: "7px",
+    height: "auto",
+    maxHeight: "560px",
     display: "block",
+    background: "#101820",
   },
 
   toolbar: {
@@ -1457,7 +1578,7 @@ const styles = {
     flex: 1,
     maxWidth: "420px",
     border:
-      "1px solid #DDE2E9",
+      "1px solid #D9E0E7",
     borderRadius: "6px",
     padding: "10px 12px",
     outline: "none",
@@ -1469,9 +1590,9 @@ const styles = {
 
   exportButton: {
     border:
-      "1px solid #D6DEE7",
+      "1px solid #D2DCE5",
     background: "#FFFFFF",
-    color: "#385A75",
+    color: "#245B7A",
     borderRadius: "6px",
     padding: "9px 14px",
     fontSize: "11px",
@@ -1487,18 +1608,19 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "700px",
+    minWidth: "850px",
   },
 
   th: {
     textAlign: "left",
     fontSize: "9px",
-    color: "#9099A7",
+    color: "#8D97A5",
     letterSpacing: "0.8px",
     fontWeight: 700,
-    padding: "11px 10px",
+    padding:
+      "11px 10px",
     borderBottom:
-      "1px solid #E6EAF0",
+      "1px solid #E5E9EE",
   },
 
   tr: {
@@ -1507,7 +1629,8 @@ const styles = {
   },
 
   td: {
-    padding: "14px 10px",
+    padding:
+      "14px 10px",
     fontSize: "11px",
     color: "#5F6B7C",
     verticalAlign: "middle",
@@ -1524,14 +1647,15 @@ const styles = {
   eventDot: {
     width: "6px",
     height: "6px",
-    background: "#4A7898",
+    background: "#2E6F98",
     borderRadius: "50%",
+    flexShrink: 0,
   },
 
   viewButton: {
     border: "none",
-    background: "#EDF3F7",
-    color: "#2E6389",
+    background: "#EAF2F8",
+    color: "#245B7A",
     borderRadius: "5px",
     padding: "7px 10px",
     fontSize: "10px",
@@ -1557,14 +1681,15 @@ const styles = {
       "space-between",
     color: "#9AA3B1",
     fontSize: "10px",
-    padding: "8px 2px 0",
+    padding:
+      "8px 2px 0",
   },
 
   modalOverlay: {
     position: "fixed",
     inset: 0,
     background:
-      "rgba(18,27,40,0.48)",
+      "rgba(15,25,36,0.55)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1573,14 +1698,14 @@ const styles = {
   },
 
   modal: {
-    width: "min(760px, 100%)",
+    width: "min(780px, 100%)",
     maxHeight: "90vh",
     overflowY: "auto",
     background: "#FFFFFF",
     borderRadius: "10px",
     padding: "22px",
     boxShadow:
-      "0 20px 60px rgba(0,0,0,0.18)",
+      "0 20px 60px rgba(0,0,0,0.2)",
   },
 
   modalHeader: {
@@ -1592,7 +1717,7 @@ const styles = {
   },
 
   modalEyebrow: {
-    color: "#8A94A4",
+    color: "#8994A3",
     fontSize: "9px",
     fontWeight: 700,
     letterSpacing: "1px",
@@ -1606,7 +1731,7 @@ const styles = {
 
   closeButton: {
     border: "none",
-    background: "#F2F4F7",
+    background: "#F1F4F7",
     width: "30px",
     height: "30px",
     borderRadius: "6px",
@@ -1619,7 +1744,7 @@ const styles = {
     width: "100%",
     maxHeight: "500px",
     objectFit: "contain",
-    background: "#F4F6F8",
+    background: "#F3F5F7",
     borderRadius: "7px",
     display: "block",
   },
