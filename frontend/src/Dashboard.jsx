@@ -19,9 +19,6 @@ const API_BASE =
 
 const VIDEO_URL = "/output_video.mp4";
 
-const FALLBACK_VIDEO_URL =
-  `${API_BASE}/videos/output_video.mp4`;
-
 /* Saranathan / Panjappur reference location */
 const MAP_LAT = 10.757285;
 const MAP_LNG = 78.651466;
@@ -221,13 +218,8 @@ export default function Dashboard() {
   ========================================================= */
 
   const handleVideoError = () => {
-    if (videoSource === VIDEO_URL) {
-      setVideoSource(
-        FALLBACK_VIDEO_URL
-      );
-    } else {
-      setVideoError(true);
-    }
+    setVideoReady(false);
+    setVideoError(true);
   };
 
 
@@ -720,8 +712,9 @@ function DashboardPage({
               className="main-video"
               controls
               playsInline
-              preload="metadata"
-              onLoadedMetadata={
+              preload="auto"
+              src={VIDEO_URL}
+              onLoadedData={
                 onVideoLoaded
               }
               onCanPlay={
@@ -731,15 +724,8 @@ function DashboardPage({
                 onVideoError
               }
             >
-
-              <source
-                src={videoSource}
-                type="video/mp4"
-              />
-
               Your browser does not support
               HTML5 video.
-
             </video>
 
 
