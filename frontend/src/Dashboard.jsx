@@ -1,2814 +1,1681 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-const API_BASE = "https://spatio-temporal-traffic-violation.onrender.com";
+const API_BASE =
+  "https://spatio-temporal-traffic-violation.onrender.com";
 
-const COLORS = {
-  bg: "#070b14",
-  panel: "#0d1320",
-  panel2: "#111827",
-  border: "rgba(255,255,255,0.08)",
-  text: "#f8fafc",
-  muted: "#94a3b8",
-  cyan: "#22d3ee",
-  blue: "#60a5fa",
-  green: "#34d399",
-  yellow: "#fbbf24",
-  red: "#fb7185",
-  purple: "#a78bfa",
-};
+const VIDEO_URL = "/output_video.mp4";
 
-/* =========================================================
-   SMALL UI COMPONENTS
-========================================================= */
+function Dashboard({ page = "dashboard" }) {
+  const navigate = useNavigate();
+  const location = useLocation();
 
-function StatCard({ title, value, subtitle, icon, accent }) {
-  return (
-    <div
-      style={{
-        ...styles.statCard,
-        boxShadow: `0 0 35px ${accent}10`,
-      }}
-    >
-      <div
-        style={{
-          ...styles.statIcon,
-          color: accent,
-          background: `${accent}14`,
-        }}
-      >
-        {icon}
-      </div>
-
-      <div style={{ flex: 1 }}>
-        <div style={styles.statTitle}>{title}</div>
-        <div style={styles.statValue}>{value}</div>
-        <div style={styles.statSubtitle}>{subtitle}</div>
-      </div>
-
-      <div
-        style={{
-          width: 4,
-          height: 42,
-          borderRadius: 10,
-          background: accent,
-          opacity: 0.8,
-        }}
-      />
-    </div>
-  );
-}
-
-function SectionHeader({ title, subtitle, action }) {
-  return (
-    <div style={styles.sectionHeader}>
-      <div>
-        <h2 style={styles.sectionTitle}>{title}</h2>
-
-        {subtitle && (
-          <p style={styles.sectionSubtitle}>{subtitle}</p>
-        )}
-      </div>
-
-      {action}
-    </div>
-  );
-}
-
-function Badge({ children, type = "default" }) {
-  const badgeStyles = {
-    danger: {
-      bg: "rgba(251,113,133,0.12)",
-      color: "#fb7185",
-    },
-
-    warning: {
-      bg: "rgba(251,191,36,0.12)",
-      color: "#fbbf24",
-    },
-
-    success: {
-      bg: "rgba(52,211,153,0.12)",
-      color: "#34d399",
-    },
-
-    info: {
-      bg: "rgba(34,211,238,0.12)",
-      color: "#22d3ee",
-    },
-
-    default: {
-      bg: "rgba(148,163,184,0.12)",
-      color: "#cbd5e1",
-    },
-  };
-
-  const selected = badgeStyles[type] || badgeStyles.default;
-
-  return (
-    <span
-      style={{
-        padding: "5px 9px",
-        borderRadius: 999,
-        background: selected.bg,
-        color: selected.color,
-        fontSize: 10,
-        fontWeight: 800,
-        letterSpacing: 0.4,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-/* =========================================================
-   DATA HELPERS
-========================================================= */
-
-function getViolationType(row) {
-  const raw = String(
-    row?.Violation ||
-      row?.violation ||
-      row?.Type ||
-      row?.type ||
-      row?.Violation_Type ||
-      row?.violation_type ||
-      "Traffic Event"
-  );
-
-  const lower = raw.toLowerCase();
-
-  if (lower.includes("helmet")) {
-    return "Helmetless Riding";
-  }
-
-  if (
-    lower.includes("triple") ||
-    lower.includes("rider") ||
-    lower.includes("excess")
-  ) {
-    return "Excessive Rider Count";
-  }
-
-  if (
-    lower.includes("mobile") ||
-    lower.includes("phone")
-  ) {
-    return "Mobile Phone Usage";
-  }
-
-  if (lower.includes("wrong")) {
-    return "Wrong-Way Movement";
-  }
-
-  return raw;
-}
-
-function getSeverity(type) {
-  const lower = String(type).toLowerCase();
-
-  if (lower.includes("wrong")) {
-    return "danger";
-  }
-
-  if (lower.includes("rider")) {
-    return "danger";
-  }
-
-  if (lower.includes("helmet")) {
-    return "warning";
-  }
-
-  if (lower.includes("mobile")) {
-    return "warning";
-  }
-
-  return "info";
-}
-
-function getSnapshot(row) {
-  return (
-    row?.Snapshot ||
-    row?.snapshot ||
-    row?.Image ||
-    row?.image ||
-    row?.Evidence ||
-    row?.evidence ||
-    ""
-  );
-}
-
-function getTimestamp(row) {
-  return (
-    row?.Timestamp ||
-    row?.timestamp ||
-    row?.Time ||
-    row?.time ||
-    row?.DateTime ||
-    row?.datetime ||
-    "-"
-  );
-}
-
-function getPlate(row) {
-  return (
-    row?.["Number Plate"] ||
-    row?.["Number_Plate"] ||
-    row?.Plate ||
-    row?.plate ||
-    row?.License_Plate ||
-    row?.license_plate ||
-    "Not detected"
-  );
-}
-
-function getVehicle(row) {
-  return (
-    row?.Vehicle ||
-    row?.vehicle ||
-    row?.Vehicle_Type ||
-    row?.vehicle_type ||
-    "Two-Wheeler"
-  );
-}
-
-/* =========================================================
-   MAIN DASHBOARD
-========================================================= */
-
-export default function Dashboard() {
   const [violations, setViolations] = useState([]);
-  const [selected, setSelected] = useState(null);
-
   const [loading, setLoading] = useState(true);
-  const [backendOnline, setBackendOnline] = useState(false);
-
-  const [activeNav, setActiveNav] = useState("Overview");
-
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("All");
-
-  const [lastUpdated, setLastUpdated] = useState(null);
-
-  /* =======================================================
-     FETCH BACKEND DATA
-  ======================================================= */
+  const [selectedEvidence, setSelectedEvidence] = useState(null);
 
   useEffect(() => {
-    fetchViolations();
-
-    const interval = setInterval(() => {
-      fetchViolations();
-    }, 30000);
-
-    return () => clearInterval(interval);
+    fetch(`${API_BASE}/api/violations`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to fetch violations");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        setViolations(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        console.error("Violation API error:", error);
+        setViolations([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
-  async function fetchViolations() {
-    try {
-      setLoading(true);
-
-      const response = await fetch(
-        `${API_BASE}/api/violations`
-      );
-
-      if (!response.ok) {
-        throw new Error("Backend request failed");
-      }
-
-      const data = await response.json();
-
-      setViolations(Array.isArray(data) ? data : []);
-
-      setBackendOnline(true);
-      setLastUpdated(new Date());
-    } catch (error) {
-      console.error("RoadSense backend error:", error);
-      setBackendOnline(false);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /* =======================================================
-     NORMALIZE DATA
-  ======================================================= */
-
-  const normalized = useMemo(() => {
-    return violations.map((row, index) => {
-      const type = getViolationType(row);
-
-      return {
-        ...row,
-
-        _id: index,
-
-        _type: type,
-
-        _severity: getSeverity(type),
-
-        _snapshot: getSnapshot(row),
-
-        _timestamp: getTimestamp(row),
-
-        _plate: getPlate(row),
-
-        _vehicle: getVehicle(row),
-      };
-    });
-  }, [violations]);
-
-  /* =======================================================
-     FILTER DATA
-  ======================================================= */
-
-  const filteredViolations = useMemo(() => {
-    return normalized.filter((row) => {
-      const matchesFilter =
-        filter === "All" ||
-        row._type
-          .toLowerCase()
-          .includes(filter.toLowerCase());
-
-      const searchable = `
-        ${row._type}
-        ${row._plate}
-        ${row._vehicle}
-        ${row._timestamp}
-      `.toLowerCase();
-
-      return (
-        matchesFilter &&
-        searchable.includes(search.toLowerCase())
-      );
-    });
-  }, [normalized, filter, search]);
-
-  /* =======================================================
-     KPI COUNTS
-  ======================================================= */
-
-  const counts = useMemo(() => {
-    return {
-      total: normalized.length,
-
-      helmet: normalized.filter((x) =>
-        x._type.toLowerCase().includes("helmet")
-      ).length,
-
-      mobile: normalized.filter((x) =>
-        x._type.toLowerCase().includes("mobile")
-      ).length,
-
-      rider: normalized.filter((x) =>
-        x._type.toLowerCase().includes("rider")
-      ).length,
-
-      wrongWay: normalized.filter((x) =>
-        x._type.toLowerCase().includes("wrong")
-      ).length,
-    };
-  }, [normalized]);
-
-  /* =======================================================
-     CHART
-  ======================================================= */
-
-  const chartData = [
+  const navigationItems = [
     {
-      label: "Helmet",
-      value: counts.helmet,
-      color: COLORS.yellow,
+      label: "Dashboard",
+      path: "/dashboard",
+      icon: "⌂",
     },
-
     {
-      label: "Rider",
-      value: counts.rider,
-      color: COLORS.red,
+      label: "Violations",
+      path: "/violations",
+      icon: "⚠",
     },
-
     {
-      label: "Mobile",
-      value: counts.mobile,
-      color: COLORS.purple,
+      label: "Analytics",
+      path: "/analytics",
+      icon: "◫",
     },
-
     {
-      label: "Wrong Way",
-      value: counts.wrongWay,
-      color: COLORS.cyan,
+      label: "Smart Parking",
+      path: "/parking",
+      icon: "P",
+    },
+    {
+      label: "ANPR",
+      path: "/anpr",
+      icon: "▣",
     },
   ];
 
-  const maxChartValue = Math.max(
-    ...chartData.map((item) => item.value),
-    1
-  );
+  const getViolationType = (row) => {
+    const value =
+      row.violation ||
+      row.violation_type ||
+      row.type ||
+      row.event ||
+      row.label ||
+      row.class ||
+      "Traffic Event";
 
-  /* =======================================================
-     URL HELPERS
-  ======================================================= */
+    return String(value);
+  };
 
-  const videoUrl =
-    `${API_BASE}/videos/helmetless_fixed.mp4`;
+  const getTimestamp = (row) => {
+    return (
+      row.timestamp ||
+      row.time ||
+      row.datetime ||
+      row.date ||
+      "-"
+    );
+  };
 
-  function snapshotUrl(row) {
-    if (!row?._snapshot) {
+  const getVehicle = (row) => {
+    return (
+      row.vehicle_number ||
+      row.plate_number ||
+      row.license_plate ||
+      row.vehicle ||
+      "Unknown"
+    );
+  };
+
+  const getSnapshot = (row) => {
+    return (
+      row._snapshot ||
+      row.snapshot ||
+      row.image ||
+      row.evidence ||
+      ""
+    );
+  };
+
+  const counts = useMemo(() => {
+    let helmetless = 0;
+    let triple = 0;
+    let mobile = 0;
+    let wrongWay = 0;
+
+    violations.forEach((row) => {
+      const type = getViolationType(row).toLowerCase();
+
+      if (
+        type.includes("helmet") ||
+        type.includes("no helmet") ||
+        type.includes("helmetless")
+      ) {
+        helmetless++;
+      }
+
+      if (
+        type.includes("triple") ||
+        type.includes("rider") ||
+        type.includes("excessive")
+      ) {
+        triple++;
+      }
+
+      if (
+        type.includes("mobile") ||
+        type.includes("phone")
+      ) {
+        mobile++;
+      }
+
+      if (
+        type.includes("wrong") ||
+        type.includes("wrong-way") ||
+        type.includes("wrong way")
+      ) {
+        wrongWay++;
+      }
+    });
+
+    return {
+      helmetless,
+      triple,
+      mobile,
+      wrongWay,
+      total: violations.length,
+    };
+  }, [violations]);
+
+  const filteredViolations = useMemo(() => {
+    const query = search.toLowerCase().trim();
+
+    if (!query) {
+      return violations;
+    }
+
+    return violations.filter((row) => {
+      return JSON.stringify(row).toLowerCase().includes(query);
+    });
+  }, [violations, search]);
+
+  const navigateTo = (path) => {
+    navigate(path);
+  };
+
+  const downloadCSV = () => {
+    window.open(`${API_BASE}/download/csv`, "_blank");
+  };
+
+  const evidenceURL = (row) => {
+    const snapshot = getSnapshot(row);
+
+    if (!snapshot) {
       return "";
     }
 
-    const filename = String(row._snapshot)
+    const filename = String(snapshot)
       .replaceAll("\\", "/")
       .split("/")
       .pop();
 
-    return `${API_BASE}/snapshots/${encodeURIComponent(
-      filename
-    )}`;
-  }
+    return `${API_BASE}/snapshots/${encodeURIComponent(filename)}`;
+  };
 
-  function exportCSV() {
-    window.open(
-      `${API_BASE}/download/csv`,
-      "_blank"
-    );
-  }
+  const renderPageTitle = () => {
+    switch (page) {
+      case "violations":
+        return {
+          title: "Traffic Violations",
+          subtitle:
+            "Edge-AI detected mobility events and enforcement evidence",
+        };
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+      case "analytics":
+        return {
+          title: "Mobility Analytics",
+          subtitle:
+            "Traffic-event distribution and Edge-AI detection intelligence",
+        };
+
+      case "parking":
+        return {
+          title: "Smart Parking",
+          subtitle:
+            "Camera-based parking occupancy and availability monitoring",
+        };
+
+      case "anpr":
+        return {
+          title: "Automatic Number Plate Recognition",
+          subtitle:
+            "Vehicle identification and plate recognition intelligence",
+        };
+
+      default:
+        return {
+          title: "Mobility Intelligence Dashboard",
+          subtitle:
+            "Edge-AI powered CCTV-based vehicle and road-state analysis",
+        };
+    }
+  };
+
+  const pageInfo = renderPageTitle();
 
   return (
     <div style={styles.app}>
-
-      {/* ===================================================
-          SIDEBAR
-      =================================================== */}
-
+      {/* SIDEBAR */}
       <aside style={styles.sidebar}>
+        <div>
+          <div style={styles.brand}>
+            <div style={styles.brandMark}>RS</div>
 
-        {/* BRAND */}
+            <div>
+              <div style={styles.brandName}>RoadSense AI</div>
 
-        <div style={styles.brand}>
-
-          <div style={styles.brandMark}>
-            R
-          </div>
-
-          <div>
-            <div style={styles.brandName}>
-              RoadSense
-            </div>
-
-            <div style={styles.brandSub}>
-              AI MOBILITY INTELLIGENCE
+              <div style={styles.brandStatus}>
+                <span style={styles.aiDot}></span>
+                EDGE AI ONLINE
+              </div>
             </div>
           </div>
 
+          <div style={styles.navLabel}>MONITORING</div>
+
+          <nav style={styles.nav}>
+            {navigationItems.map((item) => {
+              const active = location.pathname === item.path;
+
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigateTo(item.path)}
+                  style={{
+                    ...styles.navItem,
+                    ...(active ? styles.navItemActive : {}),
+                  }}
+                >
+                  <span
+                    style={{
+                      ...styles.navIcon,
+                      ...(active ? styles.navIconActive : {}),
+                    }}
+                  >
+                    {item.icon}
+                  </span>
+
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
-
-        {/* NAVIGATION */}
-
-        <div style={styles.navLabel}>
-          MONITORING
-        </div>
-
-        {[
-          ["Overview", "◈"],
-          ["Violations", "⚠"],
-          ["Evidence", "▣"],
-          ["Analytics", "◌"],
-        ].map(([item, icon]) => (
-          <button
-            key={item}
-            onClick={() => setActiveNav(item)}
-            style={{
-              ...styles.navButton,
-
-              ...(activeNav === item
-                ? styles.navButtonActive
-                : {}),
-            }}
-          >
-
-            <span style={styles.navIcon}>
-              {icon}
-            </span>
-
-            {item}
-
-            {item === "Violations" &&
-              normalized.length > 0 && (
-                <span style={styles.navCount}>
-                  {normalized.length}
-                </span>
-              )}
-
-          </button>
-        ))}
-
-        <div style={styles.navLabel}>
-          SYSTEM
-        </div>
-
-        <button
-          style={styles.navButton}
-          onClick={() =>
-            window.open(
-              `${API_BASE}/health`,
-              "_blank"
-            )
-          }
-        >
-          <span style={styles.navIcon}>
-            ⌁
-          </span>
-
-          Backend Health
-        </button>
-
-        {/* SIDEBAR BOTTOM */}
 
         <div style={styles.sidebarBottom}>
-
-          <div style={styles.systemBox}>
-
-            <div style={styles.systemTop}>
-
-              <span
-                style={{
-                  ...styles.statusDot,
-
-                  background: backendOnline
-                    ? COLORS.green
-                    : COLORS.red,
-                }}
-              />
-
-              {backendOnline
-                ? "SYSTEM ONLINE"
-                : "BACKEND OFFLINE"}
-
+          <div style={styles.edgeBox}>
+            <div style={styles.edgeTitle}>
+              Edge Processing
             </div>
 
-            <div style={styles.systemText}>
-              Edge-AI perception and mobility
-              intelligence service
+            <div style={styles.edgeRow}>
+              <span>System</span>
+              <span style={styles.online}>ONLINE</span>
             </div>
 
+            <div style={styles.edgeRow}>
+              <span>Camera Feed</span>
+              <span style={styles.online}>ACTIVE</span>
+            </div>
+
+            <div style={styles.edgeRow}>
+              <span>AI Engine</span>
+              <span style={styles.online}>READY</span>
+            </div>
           </div>
 
           <div style={styles.version}>
-            ROADSENSE AI • v1.0
+            RoadSense AI v1.0
           </div>
-
         </div>
-
       </aside>
 
-      {/* ===================================================
-          MAIN
-      =================================================== */}
-
+      {/* MAIN */}
       <main style={styles.main}>
-
         {/* HEADER */}
-
         <header style={styles.header}>
-
           <div>
-
             <div style={styles.breadcrumb}>
-              ROADSENSE /{" "}
-              {activeNav.toUpperCase()}
+              ROADSENSE / {page.toUpperCase()}
             </div>
 
             <h1 style={styles.pageTitle}>
-              Mobility Intelligence Center
+              {pageInfo.title}
             </h1>
 
             <p style={styles.pageSubtitle}>
-              Edge-AI powered traffic monitoring
-              and violation intelligence
+              {pageInfo.subtitle}
             </p>
-
           </div>
 
-          <div style={styles.headerRight}>
-
-            <div style={styles.liveStatus}>
-
-              <span
-                style={{
-                  ...styles.liveDot,
-
-                  background: backendOnline
-                    ? COLORS.green
-                    : COLORS.red,
-                }}
-              />
-
-              {backendOnline
-                ? "LIVE SYSTEM"
-                : "OFFLINE"}
-
-            </div>
-
-            <button
-              style={styles.refreshButton}
-              onClick={fetchViolations}
-            >
-              ↻ Refresh
-            </button>
-
+          <div style={styles.headerStatus}>
+            <span style={styles.aiDot}></span>
+            SYSTEM OPERATIONAL
           </div>
-
         </header>
 
-        {/* =================================================
-            HERO
-        ================================================= */}
-
-        <section style={styles.hero}>
-
+        {/* AI ENGINE BAR */}
+        <section style={styles.aiEngineBar}>
           <div>
-
-            <div style={styles.heroEyebrow}>
-              EDGE-AI TRAFFIC OPERATIONS
+            <div style={styles.aiEngineTitle}>
+              RoadSense Edge Intelligence
             </div>
 
-            <h2 style={styles.heroTitle}>
-              Intelligent mobility.
-              <br />
-
-              <span style={styles.heroHighlight}>
-                Real-time awareness.
-              </span>
-            </h2>
-
-            <p style={styles.heroDescription}>
-              RoadSense transforms CCTV intelligence
-              into structured mobility events,
-              evidence, analytics and traffic insights.
-            </p>
-
-            <div style={styles.heroPills}>
-
-              <span style={styles.heroPill}>
-                YOLOv8
-              </span>
-
-              <span style={styles.heroPill}>
-                ByteTrack
-              </span>
-
-              <span style={styles.heroPill}>
-                Edge AI
-              </span>
-
-              <span style={styles.heroPill}>
-                ANPR
-              </span>
-
+            <div style={styles.aiEngineText}>
+              Object detection • Multi-object tracking •
+              Spatial association • Temporal validation
             </div>
-
           </div>
 
-          <div style={styles.heroOrb}>
-
-            <div style={styles.orbRing}>
-
-              <div style={styles.orbCore}>
-
-                <div style={styles.orbNumber}>
-                  {counts.total}
-                </div>
-
-                <div style={styles.orbLabel}>
-                  EVENTS
-                </div>
-
-              </div>
-
-            </div>
-
+          <div style={styles.aiEngineStatus}>
+            <span style={styles.aiDot}></span>
+            PROCESSING READY
           </div>
-
         </section>
 
-        {/* =================================================
-            KPI CARDS
-        ================================================= */}
+        {/* DASHBOARD */}
+        {page === "dashboard" && (
+          <>
+            {/* KPI */}
+            <section style={styles.kpiGrid}>
+              <KPI
+                title="Total Events"
+                value={counts.total}
+                subtitle="Detected events"
+              />
 
-        <section style={styles.statsGrid}>
+              <KPI
+                title="Helmetless"
+                value={counts.helmetless}
+                subtitle="Safety violations"
+              />
 
-          <StatCard
-            title="Total Events"
-            value={counts.total}
-            subtitle="Recorded mobility events"
-            icon="◎"
-            accent={COLORS.cyan}
-          />
+              <KPI
+                title="Excessive Riders"
+                value={counts.triple}
+                subtitle="Rider-count events"
+              />
 
-          <StatCard
-            title="Helmet Violations"
-            value={counts.helmet}
-            subtitle="Safety compliance"
-            icon="◉"
-            accent={COLORS.yellow}
-          />
+              <KPI
+                title="Mobile Usage"
+                value={counts.mobile}
+                subtitle="Phone-use events"
+              />
+            </section>
 
-          <StatCard
-            title="Excess Rider Count"
-            value={counts.rider}
-            subtitle="Two-wheeler violations"
-            icon="♢"
-            accent={COLORS.red}
-          />
+            {/* VIDEO */}
+            <VideoCard />
 
-          <StatCard
-            title="Mobile Usage"
-            value={counts.mobile}
-            subtitle="Rider phone detection"
-            icon="▣"
-            accent={COLORS.purple}
-          />
+            {/* OVERVIEW */}
+            <section style={styles.twoColumn}>
+              <EventDistribution
+                counts={counts}
+              />
 
-        </section>
+              <SystemStatus />
+            </section>
 
-        {/* =================================================
-            ANALYTICS
-        ================================================= */}
-
-        <section style={styles.twoColumn}>
-
-          {/* CHART */}
-
-          <div style={styles.card}>
-
-            <SectionHeader
-              title="Violation Intelligence"
-              subtitle="Distribution of detected traffic events"
-              action={
-                <Badge type="info">
-                  {counts.total} TOTAL
-                </Badge>
-              }
+            {/* EVENTS */}
+            <EventsTable
+              rows={filteredViolations.slice(0, 8)}
+              loading={loading}
+              search={search}
+              setSearch={setSearch}
+              onEvidence={setSelectedEvidence}
+              onExport={downloadCSV}
             />
+          </>
+        )}
 
-            <div style={styles.chart}>
+        {/* VIOLATIONS */}
+        {page === "violations" && (
+          <>
+            <section style={styles.kpiGrid}>
+              <KPI
+                title="Total Violations"
+                value={counts.total}
+                subtitle="Recorded events"
+              />
 
-              {chartData.map((item) => {
+              <KPI
+                title="Helmetless"
+                value={counts.helmetless}
+                subtitle="Helmet violations"
+              />
 
-                const height = Math.max(
-                  10,
-                  (item.value /
-                    maxChartValue) *
-                    100
-                );
+              <KPI
+                title="Excessive Riders"
+                value={counts.triple}
+                subtitle="Triple-riding events"
+              />
 
-                return (
-                  <div
-                    style={styles.barGroup}
-                    key={item.label}
-                  >
+              <KPI
+                title="Wrong-Way"
+                value={counts.wrongWay}
+                subtitle="Direction violations"
+              />
+            </section>
 
-                    <div style={styles.barValue}>
-                      {item.value}
-                    </div>
-
-                    <div style={styles.barTrack}>
-
-                      <div
-                        style={{
-                          ...styles.bar,
-
-                          height: `${height}%`,
-
-                          background:
-                            item.color,
-
-                          boxShadow:
-                            `0 0 20px ${item.color}40`,
-                        }}
-                      />
-
-                    </div>
-
-                    <div style={styles.barLabel}>
-                      {item.label}
-                    </div>
-
-                  </div>
-                );
-              })}
-
-            </div>
-
-          </div>
-
-          {/* SYSTEM STATUS */}
-
-          <div style={styles.card}>
-
-            <SectionHeader
-              title="System Status"
-              subtitle="RoadSense infrastructure"
+            <EventsTable
+              rows={filteredViolations}
+              loading={loading}
+              search={search}
+              setSearch={setSearch}
+              onEvidence={setSelectedEvidence}
+              onExport={downloadCSV}
             />
+          </>
+        )}
 
-            <div style={styles.statusList}>
+        {/* ANALYTICS */}
+        {page === "analytics" && (
+          <>
+            <section style={styles.kpiGrid}>
+              <KPI
+                title="Detected Events"
+                value={counts.total}
+                subtitle="All recorded events"
+              />
 
-              <div style={styles.statusRow}>
+              <KPI
+                title="Helmetless"
+                value={counts.helmetless}
+                subtitle="Detected"
+              />
 
-                <div style={styles.statusName}>
-                  <span style={styles.statusIcon}>
-                    ◉
-                  </span>
+              <KPI
+                title="Mobile Usage"
+                value={counts.mobile}
+                subtitle="Detected"
+              />
 
-                  Edge Processing
+              <KPI
+                title="Wrong-Way"
+                value={counts.wrongWay}
+                subtitle="Detected"
+              />
+            </section>
+
+            <section style={styles.analyticsGrid}>
+              <EventDistribution counts={counts} />
+
+              <div style={styles.panel}>
+                <div style={styles.sectionTitle}>
+                  Detection Pipeline
                 </div>
 
-                <Badge type="success">
-                  ACTIVE
-                </Badge>
-
-              </div>
-
-              <div style={styles.statusRow}>
-
-                <div style={styles.statusName}>
-                  <span style={styles.statusIcon}>
-                    ◌
-                  </span>
-
-                  Video Analytics
+                <div style={styles.sectionSubtitle}>
+                  RoadSense Edge-AI processing stages
                 </div>
 
-                <Badge type="success">
-                  READY
-                </Badge>
-
-              </div>
-
-              <div style={styles.statusRow}>
-
-                <div style={styles.statusName}>
-                  <span style={styles.statusIcon}>
-                    ◇
-                  </span>
-
-                  Evidence Storage
-                </div>
-
-                <Badge type="success">
-                  AVAILABLE
-                </Badge>
-
-              </div>
-
-              <div style={styles.statusRow}>
-
-                <div style={styles.statusName}>
-                  <span style={styles.statusIcon}>
-                    ⌁
-                  </span>
-
-                  Backend API
-                </div>
-
-                <Badge
-                  type={
-                    backendOnline
-                      ? "success"
-                      : "danger"
-                  }
-                >
-                  {backendOnline
-                    ? "CONNECTED"
-                    : "OFFLINE"}
-                </Badge>
-
-              </div>
-
-            </div>
-
-            <div style={styles.healthMeter}>
-
-              <div style={styles.healthHeader}>
-
-                <span>
-                  System availability
-                </span>
-
-                <strong>
-                  {backendOnline
-                    ? "Operational"
-                    : "Attention"}
-                </strong>
-
-              </div>
-
-              <div style={styles.progressTrack}>
-
-                <div
-                  style={{
-                    ...styles.progress,
-
-                    width: backendOnline
-                      ? "96%"
-                      : "25%",
-
-                    background: backendOnline
-                      ? COLORS.green
-                      : COLORS.red,
-                  }}
+                <PipelineItem
+                  number="01"
+                  title="Object Detection"
+                  text="Vehicle and associated-object detection"
                 />
 
+                <PipelineItem
+                  number="02"
+                  title="Tracking"
+                  text="Persistent vehicle identity across frames"
+                />
+
+                <PipelineItem
+                  number="03"
+                  title="Spatial Association"
+                  text="Relationship between vehicles and objects"
+                />
+
+                <PipelineItem
+                  number="04"
+                  title="Temporal Validation"
+                  text="Multi-frame event confirmation"
+                />
+
+                <PipelineItem
+                  number="05"
+                  title="Evidence Generation"
+                  text="Validated event and supporting evidence"
+                />
               </div>
+            </section>
+          </>
+        )}
 
-            </div>
-
-          </div>
-
-        </section>
-
-        {/* =================================================
-            VIDEO + MAP
-        ================================================= */}
-
-        <section style={styles.twoColumn}>
-
-          {/* VIDEO */}
-
-          <div style={styles.card}>
-
-            <SectionHeader
-              title="Processed Video"
-              subtitle="AI-generated traffic analysis output"
-              action={
-                <Badge type="success">
-                  READY
-                </Badge>
-              }
-            />
-
-            <div style={styles.videoWrapper}>
-
-              <video
-                controls
-                preload="metadata"
-                style={styles.video}
-                src={videoUrl}
+        {/* PARKING */}
+        {page === "parking" && (
+          <>
+            <section style={styles.kpiGrid}>
+              <KPI
+                title="Parking Module"
+                value="ACTIVE"
+                subtitle="Camera-based monitoring"
               />
 
-              <div style={styles.videoOverlay}>
-
-                <span>
-                  ROADSENSE AI
-                </span>
-
-                <span>
-                  EDGE ANALYTICS
-                </span>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* MAP */}
-
-          <div style={styles.card}>
-
-            <SectionHeader
-              title="Monitoring Zone"
-              subtitle="Traffic intelligence deployment area"
-            />
-
-            <div style={styles.mapWrapper}>
-
-              <iframe
-                title="RoadSense monitoring location"
-                src="https://www.google.com/maps?q=Trichy,Tamil%20Nadu,India&output=embed"
-                style={styles.map}
-                loading="lazy"
+              <KPI
+                title="Detection"
+                value="AI"
+                subtitle="Vision-based occupancy"
               />
 
-              <div style={styles.mapTag}>
-
-                <span style={styles.mapPulse} />
-
-                Trichy Monitoring Zone
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </section>
-
-        {/* =================================================
-            TRAFFIC EVENTS TABLE
-        ================================================= */}
-
-        <section style={styles.card}>
-
-          <SectionHeader
-            title="Recent Traffic Events"
-            subtitle={
-              lastUpdated
-                ? `Last synchronized ${lastUpdated.toLocaleTimeString()}`
-                : "Synchronizing with backend..."
-            }
-            action={
-              <button
-                style={styles.exportButton}
-                onClick={exportCSV}
-              >
-                ↓ Export CSV
-              </button>
-            }
-          />
-
-          {/* TOOLBAR */}
-
-          <div style={styles.toolbar}>
-
-            <div style={styles.searchBox}>
-
-              <span>⌕</span>
-
-              <input
-                value={search}
-                onChange={(e) =>
-                  setSearch(e.target.value)
-                }
-                placeholder="Search violations, plates, vehicles..."
-                style={styles.searchInput}
+              <KPI
+                title="Processing"
+                value="EDGE"
+                subtitle="Local inference"
               />
 
-            </div>
-
-            <div style={styles.filters}>
-
-              {[
-                "All",
-                "Helmet",
-                "Rider",
-                "Mobile",
-                "Wrong",
-              ].map((item) => (
-
-                <button
-                  key={item}
-                  onClick={() =>
-                    setFilter(item)
-                  }
-                  style={{
-                    ...styles.filterButton,
-
-                    ...(filter === item
-                      ? styles.filterActive
-                      : {}),
-                  }}
-                >
-                  {item}
-                </button>
-
-              ))}
-
-            </div>
-
-          </div>
-
-          {/* LOADING */}
-
-          {loading ? (
-
-            <div style={styles.emptyState}>
-
-              <div style={styles.loader} />
-
-              <div>
-                Synchronizing mobility
-                intelligence...
-              </div>
-
-            </div>
-
-          ) : filteredViolations.length === 0 ? (
-
-            /* EMPTY */
-
-            <div style={styles.emptyState}>
-
-              <div style={styles.emptyIcon}>
-                ✓
-              </div>
-
-              <div style={styles.emptyTitle}>
-                No events found
-              </div>
-
-              <div style={styles.emptyText}>
-                No traffic violations match
-                the current filter.
-              </div>
-
-            </div>
-
-          ) : (
-
-            /* TABLE */
-
-            <div style={styles.tableWrap}>
-
-              <table style={styles.table}>
-
-                <thead>
-
-                  <tr>
-
-                    <th>EVENT</th>
-                    <th>TIME</th>
-                    <th>VEHICLE</th>
-                    <th>NUMBER PLATE</th>
-                    <th>SEVERITY</th>
-                    <th>EVIDENCE</th>
-
-                  </tr>
-
-                </thead>
-
-                <tbody>
-
-                  {filteredViolations
-                    .slice(0, 50)
-                    .map((row) => (
-
-                      <tr
-                        key={row._id}
-                        style={styles.tableRow}
-                      >
-
-                        <td>
-
-                          <div style={styles.eventCell}>
-
-                            <div
-                              style={{
-                                ...styles.eventDot,
-
-                                background:
-                                  row._severity ===
-                                  "danger"
-                                    ? COLORS.red
-                                    : row._severity ===
-                                      "warning"
-                                    ? COLORS.yellow
-                                    : COLORS.cyan,
-                              }}
-                            />
-
-                            <div>
-
-                              <div
-                                style={
-                                  styles.eventName
-                                }
-                              >
-                                {row._type}
-                              </div>
-
-                              <div
-                                style={
-                                  styles.eventSub
-                                }
-                              >
-                                Mobility event detected
-                              </div>
-
-                            </div>
-
-                          </div>
-
-                        </td>
-
-                        <td style={styles.mutedCell}>
-                          {row._timestamp}
-                        </td>
-
-                        <td style={styles.vehicleCell}>
-                          {row._vehicle}
-                        </td>
-
-                        <td>
-
-                          <span style={styles.plate}>
-                            {row._plate}
-                          </span>
-
-                        </td>
-
-                        <td>
-
-                          <Badge
-                            type={row._severity}
-                          >
-                            {row._severity.toUpperCase()}
-                          </Badge>
-
-                        </td>
-
-                        <td>
-
-                          <button
-                            style={
-                              styles.viewButton
-                            }
-                            onClick={() =>
-                              setSelected(row)
-                            }
-                          >
-                            View Evidence →
-                          </button>
-
-                        </td>
-
-                      </tr>
-
-                    ))}
-
-                </tbody>
-
-              </table>
-
-            </div>
-
-          )}
-
-        </section>
-
-        {/* FOOTER */}
-
-        <footer style={styles.footer}>
-
-          <div>
-
-            <strong>
-              RoadSense AI
-            </strong>
-
-            <span>
-              {" "}
-              · Edge-AI Based Mobility
-              Intelligence Platform
-            </span>
-
-          </div>
-
-          <div>
-            {backendOnline
-              ? "● System operational"
-              : "● Backend unavailable"}
-          </div>
-
-        </footer>
-
-      </main>
-
-      {/* =================================================
-          EVIDENCE MODAL
-      ================================================= */}
-
-      {selected && (
-
-        <div
-          style={styles.modalBackdrop}
-          onClick={() => setSelected(null)}
-        >
-
-          <div
-            style={styles.modal}
-            onClick={(e) =>
-              e.stopPropagation()
-            }
-          >
-
-            {/* MODAL HEADER */}
-
-            <div style={styles.modalHeader}>
-
-              <div>
-
-                <div style={styles.modalEyebrow}>
-                  TRAFFIC EVENT
+              <KPI
+                title="Status"
+                value="READY"
+                subtitle="Monitoring available"
+              />
+            </section>
+
+            <section style={styles.twoColumn}>
+              <div style={styles.panel}>
+                <div style={styles.sectionTitle}>
+                  Smart Parking Intelligence
                 </div>
 
-                <h2 style={styles.modalTitle}>
-                  {selected._type}
-                </h2>
+                <div style={styles.sectionSubtitle}>
+                  Parking occupancy detection using predefined parking
+                  regions and temporal validation.
+                </div>
 
+                <div style={styles.featureList}>
+                  <Feature
+                    title="Parking-slot detection"
+                    text="Identifies vehicle occupancy within configured parking regions."
+                  />
+
+                  <Feature
+                    title="Occupancy validation"
+                    text="Uses repeated observations to reduce false occupancy states."
+                  />
+
+                  <Feature
+                    title="Dashboard monitoring"
+                    text="Displays parking availability and utilization information."
+                  />
+                </div>
+              </div>
+
+              <div style={styles.panel}>
+                <div style={styles.sectionTitle}>
+                  Parking Status
+                </div>
+
+                <div style={styles.parkingGrid}>
+                  {Array.from({ length: 12 }).map((_, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        ...styles.parkingSlot,
+                        ...(index % 3 === 0
+                          ? styles.parkingOccupied
+                          : {}),
+                      }}
+                    >
+                      P{index + 1}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={styles.parkingLegend}>
+                  <span>
+                    <span style={styles.legendDot}></span>
+                    Available
+                  </span>
+
+                  <span>
+                    <span
+                      style={{
+                        ...styles.legendDot,
+                        background: "#f59e0b",
+                      }}
+                    ></span>
+                    Occupied
+                  </span>
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* ANPR */}
+        {page === "anpr" && (
+          <>
+            <section style={styles.kpiGrid}>
+              <KPI
+                title="ANPR Module"
+                value="ACTIVE"
+                subtitle="Number plate recognition"
+              />
+
+              <KPI
+                title="OCR Engine"
+                value="READY"
+                subtitle="Plate text extraction"
+              />
+
+              <KPI
+                title="Tracking"
+                value="ACTIVE"
+                subtitle="Vehicle association"
+              />
+
+              <KPI
+                title="Evidence"
+                value="READY"
+                subtitle="Event-linked records"
+              />
+            </section>
+
+            <div style={styles.panel}>
+              <div style={styles.sectionTitle}>
+                Automatic Number Plate Recognition
+              </div>
+
+              <div style={styles.sectionSubtitle}>
+                Vehicle plate detection and OCR integrated into the
+                RoadSense perception layer.
+              </div>
+
+              <div style={styles.featureList}>
+                <Feature
+                  title="Plate Detection"
+                  text="Detects number-plate regions from the video stream."
+                />
+
+                <Feature
+                  title="OCR Processing"
+                  text="Extracts readable registration information from detected plates."
+                />
+
+                <Feature
+                  title="Vehicle Association"
+                  text="Associates recognized plates with tracked vehicles and events."
+                />
+
+                <Feature
+                  title="Evidence Linking"
+                  text="Recognition results can be associated with event evidence."
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        <footer style={styles.footer}>
+          RoadSense AI • Edge-AI Based Mobility Intelligence Platform
+        </footer>
+      </main>
+
+      {/* EVIDENCE MODAL */}
+      {selectedEvidence && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setSelectedEvidence(null)}
+        >
+          <div
+            style={styles.modal}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <div>
+                <div style={styles.sectionTitle}>
+                  Event Evidence
+                </div>
+
+                <div style={styles.sectionSubtitle}>
+                  {getViolationType(selectedEvidence)}
+                </div>
               </div>
 
               <button
+                onClick={() => setSelectedEvidence(null)}
                 style={styles.closeButton}
-                onClick={() =>
-                  setSelected(null)
-                }
               >
                 ×
               </button>
-
             </div>
 
-            {/* MODAL CONTENT */}
-
-            <div style={styles.modalContent}>
-
-              {selected._snapshot ? (
-
-                <img
-                  src={snapshotUrl(selected)}
-                  alt="Traffic violation evidence"
-                  style={styles.evidenceImage}
-                  onError={(e) => {
-                    e.currentTarget.style.display =
-                      "none";
-                  }}
-                />
-
-              ) : (
-
-                <div style={styles.noEvidence}>
-                  No evidence image available
-                </div>
-
-              )}
-
-              {/* EVENT INFORMATION */}
-
-              <div style={styles.evidenceInfo}>
-
-                <div
-                  style={styles.evidenceInfoItem}
-                >
-
-                  <span>
-                    EVENT TYPE
-                  </span>
-
-                  <strong>
-                    {selected._type}
-                  </strong>
-
-                </div>
-
-                <div
-                  style={styles.evidenceInfoItem}
-                >
-
-                  <span>
-                    TIMESTAMP
-                  </span>
-
-                  <strong>
-                    {selected._timestamp}
-                  </strong>
-
-                </div>
-
-                <div
-                  style={styles.evidenceInfoItem}
-                >
-
-                  <span>
-                    VEHICLE
-                  </span>
-
-                  <strong>
-                    {selected._vehicle}
-                  </strong>
-
-                </div>
-
-                <div
-                  style={styles.evidenceInfoItem}
-                >
-
-                  <span>
-                    NUMBER PLATE
-                  </span>
-
-                  <strong>
-                    {selected._plate}
-                  </strong>
-
-                </div>
-
+            {evidenceURL(selectedEvidence) ? (
+              <img
+                src={evidenceURL(selectedEvidence)}
+                alt="Traffic event evidence"
+                style={styles.evidenceImage}
+              />
+            ) : (
+              <div style={styles.noEvidence}>
+                No evidence image available for this event.
               </div>
-
-            </div>
-
+            )}
           </div>
-
         </div>
-
       )}
-
     </div>
   );
 }
 
-/* =========================================================
-   STYLES
-========================================================= */
+/* ---------------- COMPONENTS ---------------- */
+
+function KPI({ title, value, subtitle }) {
+  return (
+    <div style={styles.kpiCard}>
+      <div style={styles.kpiTop}>
+        <span style={styles.kpiIndicator}></span>
+        <span style={styles.kpiLabel}>{title}</span>
+      </div>
+
+      <div style={styles.kpiValue}>{value}</div>
+
+      <div style={styles.kpiSubtitle}>{subtitle}</div>
+    </div>
+  );
+}
+
+function VideoCard() {
+  return (
+    <section style={styles.videoCard}>
+      <div style={styles.sectionHeader}>
+        <div>
+          <div style={styles.sectionTitle}>
+            Processed Traffic Video
+          </div>
+
+          <div style={styles.sectionSubtitle}>
+            Edge-AI analyzed demonstration footage
+          </div>
+        </div>
+
+        <div style={styles.aiBadge}>
+          <span style={styles.aiDot}></span>
+          AI ANALYZED
+        </div>
+      </div>
+
+      <video
+        controls
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        style={styles.video}
+      >
+        <source src="/output_video.mp4" type="video/mp4" />
+        Your browser does not support video playback.
+      </video>
+    </section>
+  );
+}
+
+function EventDistribution({ counts }) {
+  const items = [
+    ["Helmetless", counts.helmetless],
+    ["Excessive Riders", counts.triple],
+    ["Mobile Usage", counts.mobile],
+    ["Wrong-Way", counts.wrongWay],
+  ];
+
+  const max = Math.max(...items.map((item) => item[1]), 1);
+
+  return (
+    <div style={styles.panel}>
+      <div style={styles.sectionTitle}>
+        Violation Intelligence
+      </div>
+
+      <div style={styles.sectionSubtitle}>
+        Distribution of detected mobility events
+      </div>
+
+      <div style={styles.chart}>
+        {items.map(([label, value]) => (
+          <div key={label} style={styles.chartRow}>
+            <div style={styles.chartLabel}>{label}</div>
+
+            <div style={styles.chartTrack}>
+              <div
+                style={{
+                  ...styles.chartBar,
+                  width: `${Math.max((value / max) * 100, value ? 8 : 0)}%`,
+                }}
+              ></div>
+            </div>
+
+            <div style={styles.chartValue}>{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SystemStatus() {
+  return (
+    <div style={styles.panel}>
+      <div style={styles.sectionTitle}>
+        Edge System Status
+      </div>
+
+      <div style={styles.sectionSubtitle}>
+        Current RoadSense processing state
+      </div>
+
+      <StatusRow label="Video Input" value="ACTIVE" />
+      <StatusRow label="Object Detection" value="READY" />
+      <StatusRow label="Vehicle Tracking" value="ACTIVE" />
+      <StatusRow label="Temporal Validation" value="READY" />
+      <StatusRow label="Evidence Manager" value="READY" />
+    </div>
+  );
+}
+
+function StatusRow({ label, value }) {
+  return (
+    <div style={styles.statusRow}>
+      <span>{label}</span>
+
+      <span style={styles.statusValue}>
+        <span style={styles.aiDot}></span>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function PipelineItem({ number, title, text }) {
+  return (
+    <div style={styles.pipelineItem}>
+      <div style={styles.pipelineNumber}>{number}</div>
+
+      <div>
+        <div style={styles.pipelineTitle}>{title}</div>
+        <div style={styles.pipelineText}>{text}</div>
+      </div>
+    </div>
+  );
+}
+
+function Feature({ title, text }) {
+  return (
+    <div style={styles.feature}>
+      <span style={styles.featureDot}></span>
+
+      <div>
+        <div style={styles.featureTitle}>{title}</div>
+        <div style={styles.featureText}>{text}</div>
+      </div>
+    </div>
+  );
+}
+
+function EventsTable({
+  rows,
+  loading,
+  search,
+  setSearch,
+  onEvidence,
+  onExport,
+}) {
+  return (
+    <section style={styles.panel}>
+      <div style={styles.sectionHeader}>
+        <div>
+          <div style={styles.sectionTitle}>
+            Recent Traffic Events
+          </div>
+
+          <div style={styles.sectionSubtitle}>
+            Validated events received from the RoadSense backend
+          </div>
+        </div>
+
+        <button
+          onClick={onExport}
+          style={styles.exportButton}
+        >
+          Export CSV
+        </button>
+      </div>
+
+      <input
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search events..."
+        style={styles.searchInput}
+      />
+
+      <div style={styles.tableWrapper}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Event</th>
+              <th style={styles.th}>Vehicle</th>
+              <th style={styles.th}>Timestamp</th>
+              <th style={styles.th}>Evidence</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loading ? (
+              <tr>
+                <td
+                  colSpan="4"
+                  style={styles.emptyCell}
+                >
+                  Loading events...
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan="4"
+                  style={styles.emptyCell}
+                >
+                  No traffic events found.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => {
+                const type =
+                  row.violation ||
+                  row.violation_type ||
+                  row.type ||
+                  row.event ||
+                  row.label ||
+                  row.class ||
+                  "Traffic Event";
+
+                const vehicle =
+                  row.vehicle_number ||
+                  row.plate_number ||
+                  row.license_plate ||
+                  row.vehicle ||
+                  "Unknown";
+
+                const timestamp =
+                  row.timestamp ||
+                  row.time ||
+                  row.datetime ||
+                  row.date ||
+                  "-";
+
+                return (
+                  <tr key={index}>
+                    <td style={styles.td}>
+                      <span style={styles.eventBadge}>
+                        {String(type)}
+                      </span>
+                    </td>
+
+                    <td style={styles.td}>
+                      {String(vehicle)}
+                    </td>
+
+                    <td style={styles.td}>
+                      {String(timestamp)}
+                    </td>
+
+                    <td style={styles.td}>
+                      <button
+                        onClick={() => onEvidence(row)}
+                        style={styles.evidenceButton}
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/* ---------------- STYLES ---------------- */
 
 const styles = {
-
-  /* APP */
-
   app: {
     minHeight: "100vh",
-
-    background:
-      "radial-gradient(circle at 80% 0%, rgba(34,211,238,0.07), transparent 30%), #070b14",
-
-    color: COLORS.text,
-
+    background: "#080b12",
+    color: "#eef2f7",
     fontFamily:
       "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-
     display: "flex",
   },
 
-  /* SIDEBAR */
-
   sidebar: {
-    width: 250,
-
+    width: "245px",
     minHeight: "100vh",
-
-    background:
-      "rgba(8,12,22,0.97)",
-
-    borderRight:
-      `1px solid ${COLORS.border}`,
-
-    padding: "25px 16px",
-
     position: "fixed",
-
     left: 0,
     top: 0,
     bottom: 0,
-
+    padding: "24px 16px",
+    background: "#0b0f17",
+    borderRight: "1px solid rgba(255,255,255,0.07)",
     display: "flex",
     flexDirection: "column",
-
-    zIndex: 10,
+    justifyContent: "space-between",
+    boxSizing: "border-box",
   },
 
   brand: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
-
-    padding:
-      "4px 8px 30px",
+    gap: "12px",
+    marginBottom: "36px",
   },
 
   brandMark: {
-    width: 40,
-    height: 40,
-
-    borderRadius: 12,
-
-    background:
-      "linear-gradient(135deg, #22d3ee, #3b82f6)",
-
+    width: "40px",
+    height: "40px",
+    borderRadius: "11px",
+    background: "#151c28",
+    border: "1px solid rgba(255,255,255,0.1)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-
-    color: "#001018",
-
-    fontWeight: 900,
-    fontSize: 20,
-
-    boxShadow:
-      "0 0 30px rgba(34,211,238,0.25)",
+    fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.04em",
   },
 
   brandName: {
-    fontSize: 17,
+    fontSize: "15px",
     fontWeight: 800,
-    letterSpacing: -0.5,
   },
 
-  brandSub: {
-    fontSize: 8,
+  brandStatus: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginTop: "5px",
+    fontSize: "9px",
+    color: "#35d07f",
+    letterSpacing: "0.08em",
+    fontWeight: 700,
+  },
 
-    color: COLORS.muted,
-
-    letterSpacing: 1.1,
-
-    marginTop: 3,
+  aiDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "50%",
+    background: "#35d07f",
+    display: "inline-block",
+    boxShadow: "0 0 8px rgba(53,208,127,0.5)",
   },
 
   navLabel: {
-    color: "#64748b",
-
-    fontSize: 9,
-
+    fontSize: "9px",
+    color: "#667085",
     fontWeight: 800,
-
-    letterSpacing: 1.5,
-
-    padding:
-      "12px 10px 8px",
+    letterSpacing: "0.12em",
+    margin: "0 10px 10px",
   },
 
-  navButton: {
+  nav: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+  },
+
+  navItem: {
     width: "100%",
-
-    border: 0,
-
+    border: "1px solid transparent",
     background: "transparent",
-
-    color: "#94a3b8",
-
-    padding: "12px",
-
-    borderRadius: 10,
-
+    color: "#8e99aa",
+    padding: "11px 12px",
+    borderRadius: "9px",
     display: "flex",
     alignItems: "center",
-
-    gap: 12,
-
+    gap: "11px",
     cursor: "pointer",
-
-    fontSize: 13,
-
-    fontWeight: 600,
-
     textAlign: "left",
-
-    marginBottom: 3,
+    fontSize: "13px",
+    fontWeight: 600,
   },
 
-  navButtonActive: {
-    color: "#f8fafc",
-
-    background:
-      "linear-gradient(90deg, rgba(34,211,238,0.13), rgba(34,211,238,0.04))",
-
-    boxShadow:
-      "inset 2px 0 0 #22d3ee",
+  navItemActive: {
+    background: "#141b27",
+    border: "1px solid rgba(255,255,255,0.08)",
+    color: "#ffffff",
   },
 
   navIcon: {
-    width: 20,
-
+    width: "23px",
     textAlign: "center",
-
-    color: "#67e8f9",
-
-    fontSize: 15,
+    fontSize: "14px",
+    color: "#667085",
   },
 
-  navCount: {
-    marginLeft: "auto",
-
-    background:
-      "rgba(251,113,133,0.14)",
-
-    color: "#fb7185",
-
-    padding: "2px 7px",
-
-    borderRadius: 999,
-
-    fontSize: 10,
+  navIconActive: {
+    color: "#dce5f1",
   },
 
   sidebarBottom: {
-    marginTop: "auto",
+    marginTop: "30px",
   },
 
-  systemBox: {
-    border:
-      `1px solid ${COLORS.border}`,
-
-    background:
-      "rgba(255,255,255,0.025)",
-
-    borderRadius: 12,
-
-    padding: 13,
+  edgeBox: {
+    padding: "14px",
+    borderRadius: "12px",
+    background: "#0f141e",
+    border: "1px solid rgba(255,255,255,0.07)",
   },
 
-  systemTop: {
-    display: "flex",
-    alignItems: "center",
-
-    gap: 7,
-
-    fontSize: 10,
-
+  edgeTitle: {
+    fontSize: "11px",
     fontWeight: 800,
-
-    letterSpacing: 0.8,
+    marginBottom: "12px",
   },
 
-  statusDot: {
-    width: 7,
-    height: 7,
-
-    borderRadius: "50%",
-
-    boxShadow:
-      "0 0 10px currentColor",
+  edgeRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: "9px",
+    fontSize: "10px",
+    color: "#7f8a9b",
   },
 
-  systemText: {
-    color: "#64748b",
-
-    fontSize: 10,
-
-    lineHeight: 1.5,
-
-    marginTop: 8,
+  online: {
+    color: "#35d07f",
+    fontWeight: 700,
   },
 
   version: {
-    color: "#475569",
-
-    fontSize: 9,
-
     textAlign: "center",
-
-    marginTop: 15,
-
-    letterSpacing: 0.8,
+    marginTop: "14px",
+    fontSize: "9px",
+    color: "#4f5969",
   },
 
-  /* MAIN */
-
   main: {
-    marginLeft: 250,
-
-    width:
-      "calc(100% - 250px)",
-
-    padding:
-      "32px 38px",
-
-    maxWidth: 1700,
-
+    marginLeft: "245px",
+    width: "calc(100% - 245px)",
+    minHeight: "100vh",
+    padding: "30px 34px",
     boxSizing: "border-box",
   },
 
-  /* HEADER */
-
   header: {
     display: "flex",
-
-    justifyContent:
-      "space-between",
-
+    justifyContent: "space-between",
     alignItems: "flex-start",
-
-    gap: 20,
-
-    marginBottom: 28,
+    gap: "20px",
+    marginBottom: "22px",
   },
 
   breadcrumb: {
-    fontSize: 9,
-
-    color: COLORS.cyan,
-
-    letterSpacing: 1.8,
-
-    fontWeight: 800,
-
-    marginBottom: 8,
+    fontSize: "9px",
+    color: "#687385",
+    fontWeight: 700,
+    letterSpacing: "0.1em",
+    marginBottom: "9px",
   },
 
   pageTitle: {
     margin: 0,
-
-    fontSize: 28,
-
-    letterSpacing: -1,
-
+    fontSize: "28px",
+    lineHeight: 1.15,
     fontWeight: 800,
+    letterSpacing: "-0.03em",
   },
 
   pageSubtitle: {
-    margin: "7px 0 0",
-
-    color: COLORS.muted,
-
-    fontSize: 12,
+    margin: "8px 0 0",
+    color: "#7f8999",
+    fontSize: "12px",
   },
 
-  headerRight: {
+  headerStatus: {
     display: "flex",
-
     alignItems: "center",
-
-    gap: 10,
-  },
-
-  liveStatus: {
-    border:
-      `1px solid ${COLORS.border}`,
-
-    background:
-      "rgba(255,255,255,0.025)",
-
-    padding: "9px 12px",
-
-    borderRadius: 10,
-
-    fontSize: 10,
-
+    gap: "8px",
+    fontSize: "9px",
+    color: "#35d07f",
     fontWeight: 800,
+    letterSpacing: "0.08em",
+    paddingTop: "8px",
+    whiteSpace: "nowrap",
+  },
 
-    letterSpacing: 0.7,
-
+  aiEngineBar: {
     display: "flex",
-
-    gap: 7,
-
+    justifyContent: "space-between",
     alignItems: "center",
+    gap: "20px",
+    padding: "15px 18px",
+    marginBottom: "20px",
+    borderRadius: "13px",
+    background: "#0d131d",
+    border: "1px solid rgba(255,255,255,0.07)",
   },
 
-  liveDot: {
-    width: 7,
-    height: 7,
-
-    borderRadius: "50%",
-  },
-
-  refreshButton: {
-    border:
-      `1px solid ${COLORS.border}`,
-
-    background: "#111827",
-
-    color: "#e2e8f0",
-
-    padding: "9px 13px",
-
-    borderRadius: 10,
-
-    cursor: "pointer",
-
-    fontSize: 11,
-
-    fontWeight: 700,
-  },
-
-  /* HERO */
-
-  hero: {
-    minHeight: 240,
-
-    borderRadius: 18,
-
-    border:
-      `1px solid ${COLORS.border}`,
-
-    background:
-      "linear-gradient(115deg, rgba(15,23,42,0.98), rgba(8,18,31,0.98))",
-
-    padding:
-      "32px 38px",
-
-    display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems: "center",
-
-    overflow: "hidden",
-
-    position: "relative",
-
-    marginBottom: 20,
-  },
-
-  heroEyebrow: {
-    color: COLORS.cyan,
-
-    fontSize: 9,
-
-    fontWeight: 900,
-
-    letterSpacing: 2,
-
-    marginBottom: 12,
-  },
-
-  heroTitle: {
-    margin: 0,
-
-    fontSize: 36,
-
-    lineHeight: 1.05,
-
-    letterSpacing: -1.8,
-
-    fontWeight: 850,
-  },
-
-  heroHighlight: {
-    color: COLORS.cyan,
-  },
-
-  heroDescription: {
-    maxWidth: 620,
-
-    color: "#94a3b8",
-
-    fontSize: 12,
-
-    lineHeight: 1.7,
-
-    marginTop: 15,
-  },
-
-  heroPills: {
-    display: "flex",
-
-    gap: 7,
-
-    marginTop: 20,
-
-    flexWrap: "wrap",
-  },
-
-  heroPill: {
-    border:
-      "1px solid rgba(34,211,238,0.15)",
-
-    background:
-      "rgba(34,211,238,0.06)",
-
-    color: "#a5f3fc",
-
-    borderRadius: 999,
-
-    padding: "6px 10px",
-
-    fontSize: 9,
-
-    fontWeight: 800,
-
-    letterSpacing: 0.6,
-  },
-
-  heroOrb: {
-    width: 190,
-    height: 190,
-
-    display: "flex",
-
-    alignItems: "center",
-
-    justifyContent: "center",
-
-    marginRight: 45,
-  },
-
-  orbRing: {
-    width: 170,
-    height: 170,
-
-    borderRadius: "50%",
-
-    border:
-      "1px solid rgba(34,211,238,0.25)",
-
-    display: "flex",
-
-    alignItems: "center",
-
-    justifyContent: "center",
-
-    boxShadow:
-      "0 0 60px rgba(34,211,238,0.08), inset 0 0 50px rgba(34,211,238,0.05)",
-  },
-
-  orbCore: {
-    width: 115,
-    height: 115,
-
-    borderRadius: "50%",
-
-    border:
-      "1px solid rgba(34,211,238,0.3)",
-
-    background:
-      "rgba(34,211,238,0.05)",
-
-    display: "flex",
-
-    flexDirection: "column",
-
-    alignItems: "center",
-
-    justifyContent: "center",
-  },
-
-  orbNumber: {
-    fontSize: 30,
-
-    fontWeight: 900,
-
-    color: "#67e8f9",
-  },
-
-  orbLabel: {
-    fontSize: 8,
-
-    letterSpacing: 1.5,
-
-    color: COLORS.muted,
-
+  aiEngineTitle: {
+    fontSize: "13px",
     fontWeight: 800,
   },
 
-  /* KPI */
+  aiEngineText: {
+    marginTop: "4px",
+    fontSize: "10px",
+    color: "#727e90",
+  },
 
-  statsGrid: {
+  aiEngineStatus: {
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    fontSize: "9px",
+    color: "#35d07f",
+    fontWeight: 800,
+    letterSpacing: "0.07em",
+    whiteSpace: "nowrap",
+  },
+
+  kpiGrid: {
     display: "grid",
-
     gridTemplateColumns:
       "repeat(4, minmax(0, 1fr))",
-
-    gap: 14,
-
-    marginBottom: 20,
+    gap: "14px",
+    marginBottom: "18px",
   },
 
-  statCard: {
-    background:
-      "rgba(13,19,32,0.88)",
+  kpiCard: {
+    padding: "17px",
+    background: "#0d131d",
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: "13px",
+  },
 
-    border:
-      `1px solid ${COLORS.border}`,
-
-    borderRadius: 15,
-
-    padding: 18,
-
+  kpiTop: {
     display: "flex",
-
     alignItems: "center",
-
-    gap: 13,
+    gap: "7px",
   },
 
-  statIcon: {
-    width: 42,
-    height: 42,
-
-    borderRadius: 12,
-
-    display: "flex",
-
-    alignItems: "center",
-
-    justifyContent: "center",
-
-    fontSize: 20,
-
-    flexShrink: 0,
+  kpiIndicator: {
+    width: "5px",
+    height: "5px",
+    borderRadius: "50%",
+    background: "#6f7d91",
   },
 
-  statTitle: {
-    color: "#94a3b8",
-
-    fontSize: 10,
-
+  kpiLabel: {
+    color: "#788496",
+    fontSize: "10px",
     fontWeight: 700,
   },
 
-  statValue: {
-    fontSize: 25,
-
-    fontWeight: 850,
-
-    letterSpacing: -1,
-
-    marginTop: 2,
-  },
-
-  statSubtitle: {
-    color: "#64748b",
-
-    fontSize: 9,
-
-    marginTop: 2,
-  },
-
-  /* GENERAL CARD */
-
-  twoColumn: {
-    display: "grid",
-
-    gridTemplateColumns:
-      "1fr 1fr",
-
-    gap: 20,
-
-    marginBottom: 20,
-  },
-
-  card: {
-    background:
-      "rgba(13,19,32,0.88)",
-
-    border:
-      `1px solid ${COLORS.border}`,
-
-    borderRadius: 16,
-
-    padding: 22,
-
-    minWidth: 0,
-  },
-
-  sectionHeader: {
-    display: "flex",
-
-    alignItems: "flex-start",
-
-    justifyContent:
-      "space-between",
-
-    gap: 15,
-
-    marginBottom: 20,
-  },
-
-  sectionTitle: {
-    fontSize: 15,
-
-    margin: 0,
-
+  kpiValue: {
+    marginTop: "13px",
+    fontSize: "25px",
     fontWeight: 800,
-
-    letterSpacing: -0.3,
   },
 
-  sectionSubtitle: {
-    color: "#64748b",
-
-    fontSize: 10,
-
-    margin: "5px 0 0",
+  kpiSubtitle: {
+    marginTop: "5px",
+    fontSize: "9px",
+    color: "#586476",
   },
 
-  /* CHART */
-
-  chart: {
-    height: 220,
-
-    display: "flex",
-
-    alignItems: "flex-end",
-
-    justifyContent:
-      "space-around",
-
-    gap: 25,
-
-    padding:
-      "10px 25px 0",
-  },
-
-  barGroup: {
-    flex: 1,
-
-    maxWidth: 70,
-
-    height: "100%",
-
-    display: "flex",
-
-    flexDirection: "column",
-
-    alignItems: "center",
-
-    justifyContent:
-      "flex-end",
-  },
-
-  barValue: {
-    fontSize: 11,
-
-    fontWeight: 800,
-
-    marginBottom: 7,
-  },
-
-  barTrack: {
-    height: 155,
-
-    width: 34,
-
-    borderRadius: 8,
-
-    background:
-      "rgba(255,255,255,0.035)",
-
-    display: "flex",
-
-    alignItems: "flex-end",
-
-    overflow: "hidden",
-  },
-
-  bar: {
-    width: "100%",
-
-    borderRadius:
-      "7px 7px 2px 2px",
-
-    transition:
-      "height .5s ease",
-  },
-
-  barLabel: {
-    fontSize: 9,
-
-    color: "#64748b",
-
-    marginTop: 9,
-
-    textAlign: "center",
-  },
-
-  /* SYSTEM */
-
-  statusList: {
-    display: "flex",
-
-    flexDirection: "column",
-
-    gap: 2,
-  },
-
-  statusRow: {
-    display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems: "center",
-
-    padding: "13px 0",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,0.045)",
-  },
-
-  statusName: {
-    display: "flex",
-
-    alignItems: "center",
-
-    gap: 10,
-
-    fontSize: 11,
-
-    color: "#cbd5e1",
-
-    fontWeight: 600,
-  },
-
-  statusIcon: {
-    color: COLORS.cyan,
-  },
-
-  healthMeter: {
-    marginTop: 20,
-  },
-
-  healthHeader: {
-    display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    color: COLORS.muted,
-
-    fontSize: 10,
-
-    marginBottom: 8,
-  },
-
-  progressTrack: {
-    height: 5,
-
-    borderRadius: 99,
-
-    background:
-      "rgba(255,255,255,0.06)",
-
-    overflow: "hidden",
-  },
-
-  progress: {
-    height: "100%",
-
-    borderRadius: 99,
-  },
-
-  /* VIDEO */
-
-  videoWrapper: {
-    borderRadius: 12,
-
-    overflow: "hidden",
-
-    background: "#020617",
-
-    position: "relative",
-
-    aspectRatio: "16 / 9",
+  videoCard: {
+    padding: "18px",
+    background: "#0d131d",
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: "13px",
+    marginBottom: "18px",
   },
 
   video: {
     width: "100%",
-
-    height: "100%",
-
-    objectFit: "cover",
-
+    maxHeight: "520px",
     display: "block",
+    borderRadius: "10px",
+    background: "#05070b",
+    marginTop: "15px",
   },
 
-  videoOverlay: {
-    position: "absolute",
-
-    left: 12,
-    right: 12,
-    top: 12,
-
+  aiBadge: {
     display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    pointerEvents: "none",
-
-    fontSize: 8,
-
-    letterSpacing: 1,
-
+    alignItems: "center",
+    gap: "6px",
+    padding: "6px 9px",
+    borderRadius: "7px",
+    background: "rgba(53,208,127,0.07)",
+    color: "#35d07f",
+    fontSize: "8px",
     fontWeight: 800,
-
-    color: "#cffafe",
-
-    textShadow:
-      "0 1px 5px black",
+    letterSpacing: "0.08em",
   },
 
-  /* MAP */
+  twoColumn: {
+    display: "grid",
+    gridTemplateColumns:
+      "minmax(0, 1.25fr) minmax(0, 1fr)",
+    gap: "18px",
+    marginBottom: "18px",
+  },
 
-  mapWrapper: {
-    borderRadius: 12,
+  analyticsGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "minmax(0, 1fr) minmax(0, 1fr)",
+    gap: "18px",
+  },
 
+  panel: {
+    background: "#0d131d",
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: "13px",
+    padding: "18px",
+    marginBottom: "18px",
+  },
+
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "15px",
+  },
+
+  sectionTitle: {
+    fontSize: "13px",
+    fontWeight: 800,
+  },
+
+  sectionSubtitle: {
+    marginTop: "5px",
+    color: "#687486",
+    fontSize: "10px",
+    lineHeight: 1.5,
+  },
+
+  chart: {
+    marginTop: "22px",
+  },
+
+  chartRow: {
+    display: "grid",
+    gridTemplateColumns: "105px 1fr 30px",
+    alignItems: "center",
+    gap: "10px",
+    marginBottom: "15px",
+  },
+
+  chartLabel: {
+    fontSize: "10px",
+    color: "#8791a1",
+  },
+
+  chartTrack: {
+    height: "7px",
+    borderRadius: "10px",
+    background: "#171e29",
     overflow: "hidden",
-
-    height: 280,
-
-    position: "relative",
-
-    background: "#020617",
   },
 
-  map: {
-    width: "100%",
-
+  chartBar: {
     height: "100%",
-
-    border: 0,
-
-    filter:
-      "grayscale(0.25) contrast(1.1)",
+    borderRadius: "10px",
+    background: "#8b98aa",
   },
 
-  mapTag: {
-    position: "absolute",
-
-    left: 12,
-    bottom: 12,
-
-    background:
-      "rgba(7,11,20,0.9)",
-
-    border:
-      `1px solid ${COLORS.border}`,
-
-    padding: "8px 11px",
-
-    borderRadius: 8,
-
-    fontSize: 9,
-
+  chartValue: {
+    textAlign: "right",
+    fontSize: "10px",
     fontWeight: 700,
-
-    display: "flex",
-
-    gap: 7,
-
-    alignItems: "center",
-
-    backdropFilter:
-      "blur(10px)",
   },
 
-  mapPulse: {
-    width: 6,
-    height: 6,
+  statusRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px 0",
+    borderBottom: "1px solid rgba(255,255,255,0.05)",
+    fontSize: "10px",
+    color: "#858f9f",
+  },
 
+  statusValue: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    color: "#35d07f",
+    fontWeight: 700,
+    fontSize: "9px",
+  },
+
+  pipelineItem: {
+    display: "flex",
+    gap: "12px",
+    padding: "13px 0",
+    borderBottom: "1px solid rgba(255,255,255,0.05)",
+  },
+
+  pipelineNumber: {
+    width: "27px",
+    height: "27px",
+    borderRadius: "7px",
+    background: "#161e2a",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "9px",
+    fontWeight: 800,
+    color: "#8995a7",
+    flexShrink: 0,
+  },
+
+  pipelineTitle: {
+    fontSize: "11px",
+    fontWeight: 700,
+  },
+
+  pipelineText: {
+    marginTop: "3px",
+    fontSize: "9px",
+    color: "#667285",
+  },
+
+  featureList: {
+    marginTop: "20px",
+  },
+
+  feature: {
+    display: "flex",
+    gap: "11px",
+    padding: "13px 0",
+    borderBottom: "1px solid rgba(255,255,255,0.05)",
+  },
+
+  featureDot: {
+    width: "6px",
+    height: "6px",
     borderRadius: "50%",
-
-    background: COLORS.cyan,
-
-    boxShadow:
-      "0 0 10px #22d3ee",
+    background: "#7d899a",
+    marginTop: "4px",
+    flexShrink: 0,
   },
 
-  /* TOOLBAR */
-
-  toolbar: {
-    display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    gap: 15,
-
-    marginBottom: 18,
-
-    flexWrap: "wrap",
+  featureTitle: {
+    fontSize: "11px",
+    fontWeight: 700,
   },
 
-  searchBox: {
-    flex: 1,
+  featureText: {
+    marginTop: "4px",
+    fontSize: "9px",
+    color: "#697588",
+    lineHeight: 1.5,
+  },
 
-    minWidth: 220,
+  parkingGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(4, minmax(0, 1fr))",
+    gap: "10px",
+    marginTop: "20px",
+  },
 
-    maxWidth: 450,
+  parkingSlot: {
+    padding: "18px 5px",
+    textAlign: "center",
+    borderRadius: "8px",
+    border: "1px solid rgba(255,255,255,0.07)",
+    background: "#111824",
+    color: "#8995a7",
+    fontSize: "10px",
+    fontWeight: 700,
+  },
 
+  parkingOccupied: {
+    background: "#181a18",
+    color: "#f59e0b",
+    border: "1px solid rgba(245,158,11,0.2)",
+  },
+
+  parkingLegend: {
     display: "flex",
+    gap: "18px",
+    marginTop: "18px",
+    fontSize: "9px",
+    color: "#737e8f",
+  },
 
-    alignItems: "center",
-
-    gap: 9,
-
-    border:
-      `1px solid ${COLORS.border}`,
-
-    background:
-      "rgba(255,255,255,0.025)",
-
-    borderRadius: 9,
-
-    padding: "9px 11px",
-
-    color: "#64748b",
+  legendDot: {
+    display: "inline-block",
+    width: "6px",
+    height: "6px",
+    borderRadius: "50%",
+    background: "#7d899a",
+    marginRight: "5px",
   },
 
   searchInput: {
     width: "100%",
-
-    background: "transparent",
-
-    border: 0,
-
-    outline: 0,
-
-    color: "#e2e8f0",
-
-    fontSize: 11,
+    boxSizing: "border-box",
+    marginTop: "16px",
+    marginBottom: "15px",
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: "1px solid rgba(255,255,255,0.07)",
+    background: "#090e16",
+    color: "#e8edf4",
+    outline: "none",
+    fontSize: "10px",
   },
 
-  filters: {
-    display: "flex",
-
-    gap: 5,
-
-    flexWrap: "wrap",
-  },
-
-  filterButton: {
-    border:
-      `1px solid ${COLORS.border}`,
-
-    background: "transparent",
-
-    color: "#64748b",
-
-    padding: "8px 11px",
-
-    borderRadius: 8,
-
-    fontSize: 10,
-
-    cursor: "pointer",
-
-    fontWeight: 700,
-  },
-
-  filterActive: {
-    background:
-      "rgba(34,211,238,0.1)",
-
-    borderColor:
-      "rgba(34,211,238,0.3)",
-
-    color: "#67e8f9",
-  },
-
-  exportButton: {
-    border:
-      "1px solid rgba(34,211,238,0.2)",
-
-    background:
-      "rgba(34,211,238,0.07)",
-
-    color: "#67e8f9",
-
-    padding: "8px 11px",
-
-    borderRadius: 8,
-
-    cursor: "pointer",
-
-    fontSize: 10,
-
-    fontWeight: 800,
-  },
-
-  /* TABLE */
-
-  tableWrap: {
+  tableWrapper: {
     overflowX: "auto",
   },
 
   table: {
     width: "100%",
-
-    borderCollapse:
-      "collapse",
-
-    minWidth: 800,
+    borderCollapse: "collapse",
+    minWidth: "600px",
   },
 
-  tableRow: {
-    borderTop:
+  th: {
+    padding: "10px",
+    textAlign: "left",
+    fontSize: "9px",
+    color: "#5f6a7b",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+    borderBottom:
+      "1px solid rgba(255,255,255,0.07)",
+  },
+
+  td: {
+    padding: "12px 10px",
+    fontSize: "10px",
+    color: "#9aa4b3",
+    borderBottom:
       "1px solid rgba(255,255,255,0.045)",
   },
 
-  eventCell: {
-    display: "flex",
-
-    alignItems: "center",
-
-    gap: 10,
-
-    padding: "14px 8px",
+  eventBadge: {
+    display: "inline-block",
+    padding: "5px 7px",
+    borderRadius: "5px",
+    background: "#151c27",
+    color: "#c2cad5",
+    fontSize: "9px",
   },
 
-  eventDot: {
-    width: 7,
-    height: 7,
-
-    borderRadius: "50%",
-
-    boxShadow:
-      "0 0 10px currentColor",
-  },
-
-  eventName: {
-    fontSize: 11,
-
-    fontWeight: 750,
-  },
-
-  eventSub: {
-    color: "#64748b",
-
-    fontSize: 9,
-
-    marginTop: 3,
-  },
-
-  mutedCell: {
-    color: "#94a3b8",
-
-    fontSize: 10,
-
-    padding: "14px 8px",
-  },
-
-  vehicleCell: {
-    color: "#cbd5e1",
-
-    fontSize: 10,
-
-    padding: "14px 8px",
-  },
-
-  plate: {
-    fontFamily:
-      "monospace",
-
-    fontSize: 10,
-
-    padding:
-      "5px 8px",
-
-    borderRadius: 5,
-
-    background:
-      "rgba(255,255,255,0.05)",
-
-    color: "#e2e8f0",
-  },
-
-  viewButton: {
-    border: 0,
-
-    background:
-      "transparent",
-
-    color: "#67e8f9",
-
+  evidenceButton: {
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "#151c27",
+    color: "#c7d0dc",
+    padding: "5px 9px",
+    borderRadius: "6px",
     cursor: "pointer",
-
-    fontSize: 10,
-
-    fontWeight: 750,
+    fontSize: "9px",
   },
 
-  /* EMPTY */
-
-  emptyState: {
-    minHeight: 220,
-
-    display: "flex",
-
-    flexDirection: "column",
-
-    justifyContent:
-      "center",
-
-    alignItems: "center",
-
-    color: "#64748b",
-
-    gap: 8,
+  exportButton: {
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "#151c27",
+    color: "#d4dae2",
+    padding: "7px 10px",
+    borderRadius: "7px",
+    cursor: "pointer",
+    fontSize: "9px",
+    fontWeight: 700,
   },
 
-  loader: {
-    width: 25,
-    height: 25,
-
-    borderRadius: "50%",
-
-    border:
-      "2px solid rgba(34,211,238,0.15)",
-
-    borderTopColor:
-      COLORS.cyan,
-
-    marginBottom: 8,
+  emptyCell: {
+    textAlign: "center",
+    padding: "30px",
+    color: "#5e6878",
+    fontSize: "10px",
   },
-
-  emptyIcon: {
-    width: 42,
-    height: 42,
-
-    borderRadius: "50%",
-
-    background:
-      "rgba(52,211,153,0.1)",
-
-    color: COLORS.green,
-
-    display: "flex",
-
-    alignItems: "center",
-
-    justifyContent: "center",
-
-    fontSize: 20,
-  },
-
-  emptyTitle: {
-    color: "#e2e8f0",
-
-    fontSize: 13,
-
-    fontWeight: 750,
-  },
-
-  emptyText: {
-    fontSize: 10,
-  },
-
-  /* FOOTER */
 
   footer: {
-    display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    color: "#475569",
-
-    fontSize: 9,
-
-    padding:
-      "22px 4px",
-
-    marginTop: 5,
+    padding: "25px 0 10px",
+    textAlign: "center",
+    color: "#414b5b",
+    fontSize: "9px",
   },
 
-  /* MODAL */
-
-  modalBackdrop: {
+  modalOverlay: {
     position: "fixed",
-
     inset: 0,
-
-    background:
-      "rgba(0,0,0,0.78)",
-
-    backdropFilter:
-      "blur(10px)",
-
+    background: "rgba(0,0,0,0.75)",
     display: "flex",
-
     alignItems: "center",
-
     justifyContent: "center",
-
-    padding: 20,
-
-    zIndex: 100,
+    padding: "25px",
+    zIndex: 1000,
   },
 
   modal: {
-    width:
-      "min(900px, 100%)",
-
+    width: "min(800px, 100%)",
     maxHeight: "90vh",
-
-    overflowY: "auto",
-
-    background: "#0b111d",
-
+    overflow: "auto",
+    background: "#0d131d",
     border:
       "1px solid rgba(255,255,255,0.1)",
-
-    borderRadius: 18,
-
-    boxShadow:
-      "0 30px 100px rgba(0,0,0,0.6)",
+    borderRadius: "14px",
+    padding: "18px",
   },
 
   modalHeader: {
-    padding:
-      "20px 22px",
-
     display: "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "flex-start",
-
-    borderBottom:
-      `1px solid ${COLORS.border}`,
-  },
-
-  modalEyebrow: {
-    color: COLORS.cyan,
-
-    fontSize: 8,
-
-    fontWeight: 900,
-
-    letterSpacing: 1.6,
-  },
-
-  modalTitle: {
-    margin:
-      "5px 0 0",
-
-    fontSize: 20,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "15px",
   },
 
   closeButton: {
-    width: 32,
-    height: 32,
-
-    borderRadius: 8,
-
-    border:
-      `1px solid ${COLORS.border}`,
-
-    background:
-      "rgba(255,255,255,0.04)",
-
-    color: "#cbd5e1",
-
-    fontSize: 20,
-
+    border: "none",
+    background: "transparent",
+    color: "#9aa4b3",
+    fontSize: "25px",
     cursor: "pointer",
-  },
-
-  modalContent: {
-    padding: 22,
   },
 
   evidenceImage: {
     width: "100%",
-
-    maxHeight: 500,
-
+    maxHeight: "70vh",
     objectFit: "contain",
-
-    background: "#020617",
-
-    borderRadius: 12,
-
-    display: "block",
+    background: "#05070b",
+    borderRadius: "9px",
   },
 
   noEvidence: {
-    height: 220,
-
-    display: "flex",
-
-    alignItems: "center",
-
-    justifyContent: "center",
-
-    color: "#64748b",
-
-    background: "#020617",
-
-    borderRadius: 12,
-  },
-
-  /* IMPORTANT:
-     ONLY ONE evidenceInfo KEY
-  */
-
-  evidenceInfo: {
-    display: "grid",
-
-    gridTemplateColumns:
-      "repeat(4, 1fr)",
-
-    gap: 10,
-
-    marginTop: 15,
-  },
-
-  evidenceInfoItem: {
-    padding: 12,
-
-    borderRadius: 10,
-
-    background:
-      "rgba(255,255,255,0.035)",
-
-    border:
-      `1px solid ${COLORS.border}`,
-
-    display: "flex",
-
-    flexDirection: "column",
-
-    gap: 5,
+    padding: "50px",
+    textAlign: "center",
+    color: "#687486",
+    fontSize: "11px",
   },
 };
+
+export default Dashboard;
