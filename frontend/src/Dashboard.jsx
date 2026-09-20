@@ -4,27 +4,33 @@ import React, {
   useRef,
   useState,
 } from "react";
-
 import {
+  BrowserRouter,
   NavLink,
   useLocation,
 } from "react-router-dom";
 
-
 /* =========================================================
-   CONFIG
+   CONFIGURATION
 ========================================================= */
 
 const API_BASE =
   "https://spatio-temporal-traffic-violation.onrender.com";
 
+/*
+  Video is stored in:
+  frontend/public/final_video.mp4
+
+  CDN is tried first because it avoids Vercel static-file
+  delivery problems. Vercel is used as fallback.
+*/
 const VIDEO_SOURCES = [
   "https://cdn.jsdelivr.net/gh/harshini1017/Spatio-Temporal-Traffic-Violation-Detection@main/frontend/public/final_video.mp4",
   "https://raw.githubusercontent.com/harshini1017/Spatio-Temporal-Traffic-Violation-Detection/main/frontend/public/final_video.mp4",
   "/final_video.mp4",
 ];
 
-/* Saranathan / Panjappur reference location */
+/* Saranathan / Panjappur reference point */
 const MAP_LAT = 10.757285;
 const MAP_LNG = 78.651466;
 
@@ -36,54 +42,54 @@ const MAP_URL =
 
 
 /* =========================================================
-   MAIN COMPONENT
+   APP
 ========================================================= */
 
 export default function Dashboard() {
+  return (
+    <>
+      <style>{styles}</style>
+
+      <AppRouter />
+    </>
+  );
+}
+
+
+/* =========================================================
+   ROUTER
+========================================================= */
+
+function AppRouter() {
   const location = useLocation();
 
-  const [violations, setViolations] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [violations, setViolations] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
 
   const [selectedEvidence, setSelectedEvidence] =
     useState(null);
 
-  const [videoIndex, setVideoIndex] =
-    useState(0);
-
-  const [videoError, setVideoError] =
-    useState(false);
-
-  const [videoReady, setVideoReady] =
-    useState(false);
-
   const [search, setSearch] =
     useState("");
 
-  const videoRef = useRef(null);
-
-  const videoSource = VIDEO_SOURCES[videoIndex];
-
-
-  /* =========================================================
-     LOAD BACKEND DATA
-  ========================================================= */
-
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
     fetch(`${API_BASE}/api/violations`)
-      .then((res) => {
-        if (!res.ok) {
+      .then((response) => {
+        if (!response.ok) {
           throw new Error(
-            `API error: ${res.status}`
+            `API request failed: ${response.status}`
           );
         }
 
-        return res.json();
+        return response.json();
       })
       .then((data) => {
-        if (!mounted) return;
+        if (!active) return;
 
         setViolations(
           Array.isArray(data) ? data : []
@@ -91,25 +97,20 @@ export default function Dashboard() {
       })
       .catch((error) => {
         console.error(
-          "Violation API error:",
+          "RoadSense API Error:",
           error
         );
       })
       .finally(() => {
-        if (mounted) {
+        if (active) {
           setLoading(false);
         }
       });
 
     return () => {
-      mounted = false;
+      active = false;
     };
   }, []);
-
-
-  /* =========================================================
-     COUNTS
-  ========================================================= */
 
   const counts = useMemo(() => {
     const result = {
@@ -123,47 +124,43 @@ export default function Dashboard() {
     violations.forEach((item) => {
       const type = String(
         item?.Violation || ""
-      ).toLowerCase();
+      )
+        .trim()
+        .toLowerCase();
 
       if (type === "helmetless") {
-        result.helmetless++;
+        result.helmetless += 1;
       }
 
       if (type === "triple_riding") {
-        result.triple++;
+        result.triple += 1;
       }
 
       if (type === "wrong_way") {
-        result.wrongWay++;
+        result.wrongWay += 1;
       }
 
       if (
         type.includes("mobile") ||
         type === "mobile_use"
       ) {
-        result.mobile++;
+        result.mobile += 1;
       }
     });
 
     return result;
   }, [violations]);
 
-
-  /* =========================================================
-     HOURLY ANALYTICS
-  ========================================================= */
-
   const hourlyData = useMemo(() => {
     const hours = {};
 
     violations.forEach((item) => {
-      const value = String(
+      const time = String(
         item?.Time || ""
       );
 
-      if (value.length >= 13) {
-        const hour =
-          value.substring(11, 13);
+      if (time.length >= 13) {
+        const hour = time.slice(11, 13);
 
         hours[hour] =
           (hours[hour] || 0) + 1;
@@ -180,7 +177,6 @@ export default function Dashboard() {
       }));
   }, [violations]);
 
-
   const maxHourlyValue = Math.max(
     ...hourlyData.map(
       (item) => item.value
@@ -188,80 +184,29 @@ export default function Dashboard() {
     1
   );
 
-
-  /* =========================================================
-     FILTERED VIOLATIONS
-  ========================================================= */
-
   const filteredViolations = useMemo(() => {
-    const q = search
+    const query = search
       .trim()
       .toLowerCase();
 
-    if (!q) {
+    if (!query) {
       return violations;
     }
 
-    return violations.filter(
-      (item) =>
-        String(item?.Violation || "")
-          .toLowerCase()
-          .includes(q) ||
-        String(item?.Plate || "")
-          .toLowerCase()
-          .includes(q) ||
-        String(item?.Location || "")
-          .toLowerCase()
-          .includes(q) ||
-        String(item?.Time || "")
-          .toLowerCase()
-          .includes(q)
-    );
+    return violations.filter((item) => {
+      const text = [
+        item?.Violation,
+        item?.Plate,
+        item?.Track_ID,
+        item?.Time,
+        item?.Location,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(query);
+    });
   }, [violations, search]);
-
-
-  /* =========================================================
-     VIDEO
-  ========================================================= */
-
-  const handleVideoError = () => {
-    if (videoIndex < VIDEO_SOURCES.length - 1) {
-      setVideoIndex((current) => current + 1);
-      setVideoReady(false);
-      setVideoError(false);
-      return;
-    }
-
-    setVideoReady(false);
-    setVideoError(true);
-  };
-
-
-  const handleVideoLoaded = () => {
-    setVideoReady(true);
-    setVideoError(false);
-  };
-
-
-  const playVideo = () => {
-    if (!videoRef.current) {
-      return;
-    }
-
-    videoRef.current
-      .play()
-      .catch((error) => {
-        console.log(
-          "Video play:",
-          error
-        );
-      });
-  };
-
-
-  /* =========================================================
-     HELPERS
-  ========================================================= */
 
   const getViolationName = (type) => {
     const value = String(
@@ -290,15 +235,13 @@ export default function Dashboard() {
     return type || "Unknown";
   };
 
-
   const getEvidenceURL = (snapshot) => {
     if (!snapshot) {
       return null;
     }
 
-    const normalized = String(
-      snapshot
-    ).replaceAll("\\", "/");
+    const normalized = String(snapshot)
+      .replaceAll("\\", "/");
 
     const filename =
       normalized.split("/").pop();
@@ -313,18 +256,13 @@ export default function Dashboard() {
     );
   };
 
-
   const exportCSV = () => {
     window.open(
       `${API_BASE}/download/csv`,
-      "_blank"
+      "_blank",
+      "noopener,noreferrer"
     );
   };
-
-
-  /* =========================================================
-     PAGE SWITCH
-  ========================================================= */
 
   let page = "dashboard";
 
@@ -340,109 +278,85 @@ export default function Dashboard() {
     page = "violations";
   }
 
-
   return (
-    <>
-      <style>{styles}</style>
+    <div className="rs-app">
 
-      <div className="rs-app">
+      <Sidebar />
 
-        <Sidebar />
+      <main className="rs-main">
 
-        <main className="rs-main">
+        {page === "dashboard" && (
+          <DashboardPage
+            counts={counts}
+            violations={violations}
+            loading={loading}
+            hourlyData={hourlyData}
+            maxHourlyValue={
+              maxHourlyValue
+            }
+            getViolationName={
+              getViolationName
+            }
+            getEvidenceURL={
+              getEvidenceURL
+            }
+            onEvidence={
+              setSelectedEvidence
+            }
+            exportCSV={exportCSV}
+          />
+        )}
 
-          {page === "dashboard" && (
-            <DashboardPage
-              counts={counts}
-              violations={violations}
-              loading={loading}
-              hourlyData={hourlyData}
-              maxHourlyValue={
-                maxHourlyValue
-              }
-              locationName={
-                violations[0]?.Location ||
-                "Saranathan Junction, Trichy"
-              }
-              videoRef={videoRef}
-              videoSource={VIDEO_SOURCES[0]}
-              videoError={videoError}
-              videoReady={videoReady}
-              onVideoError={
-                handleVideoError
-              }
-              onVideoLoaded={
-                handleVideoLoaded
-              }
-              onPlay={playVideo}
-              onEvidence={
-                setSelectedEvidence
-              }
-              getEvidenceURL={
-                getEvidenceURL
-              }
-              getViolationName={
-                getViolationName
-              }
-              exportCSV={exportCSV}
-            />
-          )}
+        {page === "analytics" && (
+          <AnalyticsPage
+            counts={counts}
+            hourlyData={hourlyData}
+            maxHourlyValue={
+              maxHourlyValue
+            }
+          />
+        )}
 
+        {page === "map" && (
+          <MapPage
+            locationName={
+              violations[0]?.Location ||
+              "Saranathan Junction, Trichy"
+            }
+          />
+        )}
 
-          {page === "analytics" && (
-            <AnalyticsPage
-              counts={counts}
-              hourlyData={hourlyData}
-              maxHourlyValue={
-                maxHourlyValue
-              }
-            />
-          )}
+        {page === "violations" && (
+          <ViolationsPage
+            violations={
+              filteredViolations
+            }
+            loading={loading}
+            search={search}
+            setSearch={setSearch}
+            getViolationName={
+              getViolationName
+            }
+            getEvidenceURL={
+              getEvidenceURL
+            }
+            onEvidence={
+              setSelectedEvidence
+            }
+            exportCSV={exportCSV}
+          />
+        )}
 
+      </main>
 
-          {page === "map" && (
-            <MapPage
-              locationName={
-                violations[0]?.Location ||
-                "Saranathan Junction, Trichy"
-              }
-            />
-          )}
+      <EvidenceModal
+        evidence={selectedEvidence}
+        onClose={() =>
+          setSelectedEvidence(null)
+        }
+      />
 
-
-          {page === "violations" && (
-            <ViolationsPage
-              violations={
-                filteredViolations
-              }
-              loading={loading}
-              search={search}
-              setSearch={setSearch}
-              onEvidence={
-                setSelectedEvidence
-              }
-              getEvidenceURL={
-                getEvidenceURL
-              }
-              getViolationName={
-                getViolationName
-              }
-              exportCSV={exportCSV}
-            />
-          )}
-
-        </main>
-
-
-        <EvidenceModal
-          evidence={selectedEvidence}
-          onClose={() =>
-            setSelectedEvidence(null)
-          }
-        />
-
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -452,30 +366,6 @@ export default function Dashboard() {
 ========================================================= */
 
 function Sidebar() {
-  const navItems = [
-    {
-      to: "/dashboard",
-      label: "Dashboard",
-      icon: "▦",
-      end: true,
-    },
-    {
-      to: "/analytics",
-      label: "Analytics",
-      icon: "◒",
-    },
-    {
-      to: "/map",
-      label: "Map",
-      icon: "⌖",
-    },
-    {
-      to: "/violations",
-      label: "Violations",
-      icon: "◉",
-    },
-  ];
-
   return (
     <aside className="sidebar">
 
@@ -495,35 +385,38 @@ function Sidebar() {
         </div>
       </div>
 
-
       <div className="nav-title">
         MAIN
       </div>
 
-
       <nav className="main-nav">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) =>
-              `nav-link ${
-                isActive
-                  ? "active"
-                  : ""
-              }`
-            }
-          >
-            <span>
-              {item.icon}
-            </span>
 
-            {item.label}
-          </NavLink>
-        ))}
+        <NavItem
+          to="/dashboard"
+          label="Dashboard"
+          icon="▦"
+          end
+        />
+
+        <NavItem
+          to="/analytics"
+          label="Analytics"
+          icon="◒"
+        />
+
+        <NavItem
+          to="/map"
+          label="Map"
+          icon="⌖"
+        />
+
+        <NavItem
+          to="/violations"
+          label="Violations"
+          icon="◉"
+        />
+
       </nav>
-
 
       <div className="sidebar-bottom">
 
@@ -543,7 +436,6 @@ function Sidebar() {
 
         </div>
 
-
         <div className="version">
           RoadSense AI • v1.0
         </div>
@@ -555,8 +447,36 @@ function Sidebar() {
 }
 
 
+function NavItem({
+  to,
+  label,
+  icon,
+  end = false,
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `nav-link ${
+          isActive
+            ? "active"
+            : ""
+        }`
+      }
+    >
+      <span>
+        {icon}
+      </span>
+
+      {label}
+    </NavLink>
+  );
+}
+
+
 /* =========================================================
-   DASHBOARD PAGE
+   DASHBOARD
 ========================================================= */
 
 function DashboardPage({
@@ -565,28 +485,79 @@ function DashboardPage({
   loading,
   hourlyData,
   maxHourlyValue,
-  locationName,
-  videoRef,
-  videoSource,
-  videoError,
-  videoReady,
-  onVideoError,
-  onVideoLoaded,
-  onPlay,
-  onEvidence,
-  getEvidenceURL,
   getViolationName,
+  getEvidenceURL,
+  onEvidence,
   exportCSV,
 }) {
+  const [videoIndex, setVideoIndex] =
+    useState(0);
+
+  const [videoReady, setVideoReady] =
+    useState(false);
+
+  const [videoError, setVideoError] =
+    useState(false);
+
+  const videoRef = useRef(null);
+
+  const videoSource =
+    VIDEO_SOURCES[videoIndex];
+
+  const locationName =
+    violations[0]?.Location ||
+    "Saranathan Junction, Trichy";
+
+  const handleVideoError = () => {
+    console.error(
+      "Video failed:",
+      videoSource
+    );
+
+    if (
+      videoIndex <
+      VIDEO_SOURCES.length - 1
+    ) {
+      setVideoReady(false);
+      setVideoError(false);
+
+      setVideoIndex(
+        (current) => current + 1
+      );
+
+      return;
+    }
+
+    setVideoReady(false);
+    setVideoError(true);
+  };
+
+  const handleVideoReady = () => {
+    setVideoReady(true);
+    setVideoError(false);
+  };
+
+  const playVideo = () => {
+    if (!videoRef.current) {
+      return;
+    }
+
+    videoRef.current
+      .play()
+      .catch((error) => {
+        console.error(
+          "Play failed:",
+          error
+        );
+      });
+  };
+
   return (
     <>
-
-      {/* HEADER */}
 
       <header className="page-header">
 
         <div>
-
           <span className="eyebrow">
             ROADSENSE / DASHBOARD
           </span>
@@ -599,9 +570,7 @@ function DashboardPage({
             Vehicle activity, traffic
             events and system status.
           </p>
-
         </div>
-
 
         <div className="online-badge">
           <span className="status-dot"></span>
@@ -635,7 +604,6 @@ function DashboardPage({
           </p>
 
         </div>
-
 
         <div className="hero-stat">
 
@@ -691,11 +659,9 @@ function DashboardPage({
       </section>
 
 
-      {/* VIDEO + INTELLIGENCE */}
+      {/* VIDEO + ANALYSIS */}
 
       <section className="dashboard-grid">
-
-        {/* VIDEO */}
 
         <div className="panel video-panel">
 
@@ -728,17 +694,17 @@ function DashboardPage({
               preload="auto"
               src={videoSource}
               onLoadedData={
-                onVideoLoaded
+                handleVideoReady
               }
               onCanPlay={
-                onVideoLoaded
+                handleVideoReady
               }
               onError={
-                onVideoError
+                handleVideoError
               }
             >
-              Your browser does not support
-              HTML5 video.
+              Your browser does not
+              support HTML5 video.
             </video>
 
 
@@ -747,11 +713,14 @@ function DashboardPage({
                 <div className="video-overlay">
 
                   <div className="video-loader">
+
                     <div className="loader-circle"></div>
 
                     <span>
-                      Loading processed video...
+                      Loading RoadSense
+                      video...
                     </span>
+
                   </div>
 
                 </div>
@@ -770,57 +739,59 @@ function DashboardPage({
                 </strong>
 
                 <span>
-                  Video source could not be loaded.
-                  The dashboard tried the CDN, GitHub and
-                  Vercel sources automatically.
+                  Source:
+                  {" "}
+                  {videoIndex + 1}
+                  {" / "}
+                  {VIDEO_SOURCES.length}
                 </span>
 
-                <a
-                  href={videoSource}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
                   className="open-video-btn"
+                  onClick={() => {
+                    setVideoIndex(0);
+                    setVideoError(false);
+                    setVideoReady(false);
+                  }}
                 >
-                  Open Video File
-                </a>
+                  Retry Video
+                </button>
 
               </div>
             )}
 
 
-            {!videoError &&
-              videoReady && (
-                <button
-                  className="play-overlay"
-                  onClick={onPlay}
-                  aria-label="Play video"
-                >
-                  ▶
-                </button>
-              )}
+            {videoReady && (
+              <button
+                className="floating-play"
+                onClick={playVideo}
+                aria-label="Play video"
+              >
+                ▶
+              </button>
+            )}
 
           </div>
+
 
           <div className="video-footer">
 
             <span>
-              Processed CCTV output
+              Processed CCTV detection output
             </span>
 
             <a
-              href={videoSource}
+              href={VIDEO_SOURCES[0]}
               target="_blank"
               rel="noreferrer"
             >
-              Open video ↗
+              Open Video ↗
             </a>
 
           </div>
 
         </div>
 
-
-        {/* INTELLIGENCE */}
 
         <div className="panel">
 
@@ -839,58 +810,29 @@ function DashboardPage({
           </div>
 
 
-          <div className="intel-list">
+          <AnalysisBar
+            label="Helmetless Riding"
+            value={counts.helmetless}
+            total={counts.total}
+          />
 
-            <AnalysisBar
-              label="Helmetless Riding"
-              value={counts.helmetless}
-              total={counts.total}
-            />
+          <AnalysisBar
+            label="Triple Riding"
+            value={counts.triple}
+            total={counts.total}
+          />
 
-            <AnalysisBar
-              label="Triple Riding"
-              value={counts.triple}
-              total={counts.total}
-            />
+          <AnalysisBar
+            label="Wrong-Way Movement"
+            value={counts.wrongWay}
+            total={counts.total}
+          />
 
-            <AnalysisBar
-              label="Wrong-Way Movement"
-              value={counts.wrongWay}
-              total={counts.total}
-            />
-
-            <AnalysisBar
-              label="Mobile Phone Usage"
-              value={counts.mobile}
-              total={counts.total}
-            />
-
-          </div>
-
-
-          <div className="mini-summary">
-
-            <div>
-              <span>
-                EVENTS
-              </span>
-
-              <strong>
-                {counts.total}
-              </strong>
-            </div>
-
-            <div>
-              <span>
-                LOCATION
-              </span>
-
-              <strong>
-                Trichy
-              </strong>
-            </div>
-
-          </div>
+          <AnalysisBar
+            label="Mobile Phone Usage"
+            value={counts.mobile}
+            total={counts.total}
+          />
 
         </div>
 
@@ -900,8 +842,6 @@ function DashboardPage({
       {/* ANALYTICS + MAP */}
 
       <section className="dashboard-grid">
-
-        {/* ANALYTICS */}
 
         <div className="panel">
 
@@ -931,7 +871,7 @@ function DashboardPage({
 
             {hourlyData.length === 0 ? (
               <div className="empty">
-                No activity data available
+                No activity data
               </div>
             ) : (
               hourlyData.map(
@@ -976,9 +916,7 @@ function DashboardPage({
         </div>
 
 
-        {/* MAP */}
-
-        <div className="panel map-preview-panel">
+        <div className="panel">
 
           <div className="panel-heading">
 
@@ -1038,7 +976,7 @@ function DashboardPage({
       </section>
 
 
-      {/* SYSTEM */}
+      {/* SYSTEM STATUS */}
 
       <section className="panel">
 
@@ -1082,7 +1020,7 @@ function DashboardPage({
 
       {/* RECENT EVENTS */}
 
-      <section className="panel recent-panel">
+      <section className="panel">
 
         <div className="panel-heading">
 
@@ -1147,26 +1085,33 @@ function AnalyticsPage({
   const total =
     counts.total || 1;
 
-  const helmetPct = Math.round(
-    (counts.helmetless / total) *
-      100
-  );
+  const helmetPct =
+    Math.round(
+      (counts.helmetless /
+        total) *
+        100
+    );
 
-  const triplePct = Math.round(
-    (counts.triple / total) *
-      100
-  );
+  const triplePct =
+    Math.round(
+      (counts.triple /
+        total) *
+        100
+    );
 
-  const wrongPct = Math.round(
-    (counts.wrongWay / total) *
-      100
-  );
+  const wrongPct =
+    Math.round(
+      (counts.wrongWay /
+        total) *
+        100
+    );
 
-  const mobilePct = Math.round(
-    (counts.mobile / total) *
-      100
-  );
-
+  const mobilePct =
+    Math.round(
+      (counts.mobile /
+        total) *
+        100
+    );
 
   return (
     <>
@@ -1174,7 +1119,6 @@ function AnalyticsPage({
       <header className="page-header">
 
         <div>
-
           <span className="eyebrow">
             ROADSENSE / ANALYTICS
           </span>
@@ -1184,10 +1128,9 @@ function AnalyticsPage({
           </h1>
 
           <p>
-            Detection patterns from recorded
-            RoadSense events.
+            Detection patterns from
+            recorded RoadSense events.
           </p>
-
         </div>
 
       </header>
@@ -1228,10 +1171,9 @@ function AnalyticsPage({
 
       <section className="analytics-layout">
 
-        <div className="panel analytics-donut-card">
+        <div className="panel">
 
           <div className="panel-heading">
-
             <div>
               <span className="panel-label">
                 EVENT DISTRIBUTION
@@ -1241,75 +1183,32 @@ function AnalyticsPage({
                 Violation Breakdown
               </h2>
             </div>
-
           </div>
 
 
-          <div className="donut-layout">
+          <AnalysisBar
+            label="Helmetless Riding"
+            value={counts.helmetless}
+            total={counts.total}
+          />
 
-            <DonutChart
-              helmetless={
-                counts.helmetless
-              }
-              triple={
-                counts.triple
-              }
-              wrongWay={
-                counts.wrongWay
-              }
-              mobile={
-                counts.mobile
-              }
-              total={
-                counts.total
-              }
-            />
+          <AnalysisBar
+            label="Triple Riding"
+            value={counts.triple}
+            total={counts.total}
+          />
 
-            <div className="legend">
+          <AnalysisBar
+            label="Wrong-Way Movement"
+            value={counts.wrongWay}
+            total={counts.total}
+          />
 
-              <LegendItem
-                label="Helmetless Riding"
-                value={
-                  counts.helmetless
-                }
-                percentage={
-                  helmetPct
-                }
-              />
-
-              <LegendItem
-                label="Triple Riding"
-                value={
-                  counts.triple
-                }
-                percentage={
-                  triplePct
-                }
-              />
-
-              <LegendItem
-                label="Wrong-Way Movement"
-                value={
-                  counts.wrongWay
-                }
-                percentage={
-                  wrongPct
-                }
-              />
-
-              <LegendItem
-                label="Mobile Phone"
-                value={
-                  counts.mobile
-                }
-                percentage={
-                  mobilePct
-                }
-              />
-
-            </div>
-
-          </div>
+          <AnalysisBar
+            label="Mobile Phone Usage"
+            value={counts.mobile}
+            total={counts.total}
+          />
 
         </div>
 
@@ -1333,85 +1232,50 @@ function AnalyticsPage({
 
           <div className="large-hour-chart">
 
-            {hourlyData.map(
-              (item) => (
-                <div
-                  className="large-hour-column"
-                  key={item.hour}
-                >
+            {hourlyData.length === 0 ? (
+              <div className="empty">
+                No activity data
+              </div>
+            ) : (
+              hourlyData.map(
+                (item) => (
+                  <div
+                    className="large-hour-column"
+                    key={item.hour}
+                  >
 
-                  <strong>
-                    {item.value}
-                  </strong>
+                    <strong>
+                      {item.value}
+                    </strong>
 
-                  <div className="large-hour-track">
+                    <div className="large-hour-track">
 
-                    <div
-                      className="large-hour-bar"
-                      style={{
-                        height:
-                          `${Math.max(
-                            5,
-                            (item.value /
-                              maxHourlyValue) *
-                              100
-                          )}%`,
-                      }}
-                    />
+                      <div
+                        className="large-hour-bar"
+                        style={{
+                          height:
+                            `${Math.max(
+                              5,
+                              (item.value /
+                                maxHourlyValue) *
+                                100
+                            )}%`,
+                        }}
+                      />
+
+                    </div>
+
+                    <span>
+                      {item.hour}:00
+                    </span>
 
                   </div>
-
-                  <span>
-                    {item.hour}:00
-                  </span>
-
-                </div>
+                )
               )
             )}
 
           </div>
 
-        </div>
-
-      </section>
-
-
-      <section className="panel analytics-summary">
-
-        <div className="summary-box">
-          <span>
-            DETECTED EVENTS
-          </span>
-          <strong>
-            {counts.total}
-          </strong>
-        </div>
-
-        <div className="summary-box">
-          <span>
-            HELMETLESS
-          </span>
-          <strong>
-            {counts.helmetless}
-          </strong>
-        </div>
-
-        <div className="summary-box">
-          <span>
-            TRIPLE RIDING
-          </span>
-          <strong>
-            {counts.triple}
-          </strong>
-        </div>
-
-        <div className="summary-box">
-          <span>
-            WRONG-WAY
-          </span>
-          <strong>
-            {counts.wrongWay}
-          </strong>
         </div>
 
       </section>
@@ -1422,7 +1286,7 @@ function AnalyticsPage({
 
 
 /* =========================================================
-   REAL MAP PAGE
+   MAP PAGE
 ========================================================= */
 
 function MapPage({
@@ -1444,12 +1308,11 @@ function MapPage({
           </h1>
 
           <p>
-            Geographic view of the RoadSense
-            monitoring zone.
+            Geographic view of the
+            RoadSense monitoring zone.
           </p>
 
         </div>
-
 
         <div className="online-badge">
           <span className="status-dot"></span>
@@ -1465,7 +1328,6 @@ function MapPage({
           title="RoadSense monitoring map"
           src={MAP_URL}
           loading="lazy"
-          className="full-map"
         />
 
       </section>
@@ -1473,37 +1335,37 @@ function MapPage({
 
       <section className="map-info-grid">
 
-        <div className="panel location-card">
+        <div className="panel">
 
           <span className="panel-label">
             MONITORING LOCATION
           </span>
 
-          <h2>
+          <h2 className="location-title">
             {locationName}
           </h2>
 
-          <p>
-            RoadSense observation zone
-            in Tiruchirappalli.
+          <p className="muted-text">
+            Active RoadSense observation
+            zone.
           </p>
 
         </div>
 
 
-        <div className="panel location-card">
+        <div className="panel">
 
           <span className="panel-label">
             REFERENCE POINT
           </span>
 
-          <h2>
+          <h2 className="location-title">
             {MAP_LAT.toFixed(6)},
             {" "}
             {MAP_LNG.toFixed(6)}
           </h2>
 
-          <p>
+          <p className="muted-text">
             Saranathan / Panjappur area
           </p>
 
@@ -1525,9 +1387,9 @@ function ViolationsPage({
   loading,
   search,
   setSearch,
-  onEvidence,
-  getEvidenceURL,
   getViolationName,
+  getEvidenceURL,
+  onEvidence,
   exportCSV,
 }) {
   return (
@@ -1546,7 +1408,7 @@ function ViolationsPage({
           </h1>
 
           <p>
-            Complete detected event records
+            Detected event records
             and evidence.
           </p>
 
@@ -1554,7 +1416,7 @@ function ViolationsPage({
 
 
         <button
-          className="export-btn large"
+          className="export-btn"
           onClick={exportCSV}
         >
           Export CSV
@@ -1567,21 +1429,21 @@ function ViolationsPage({
 
         <div className="violation-toolbar">
 
-          <div className="record-count">
+          <strong>
             {violations.length}
             {" "}
             records
-          </div>
+          </strong>
 
           <input
+            className="search-input"
             value={search}
-            onChange={(e) =>
+            onChange={(event) =>
               setSearch(
-                e.target.value
+                event.target.value
               )
             }
-            placeholder="Search violation, plate, time or location..."
-            className="search-input"
+            placeholder="Search events..."
           />
 
         </div>
@@ -1601,7 +1463,6 @@ function ViolationsPage({
             getViolationName={
               getViolationName
             }
-            full
           />
         )}
 
@@ -1636,7 +1497,6 @@ function EventTable({
       <table>
 
         <thead>
-
           <tr>
             <th>Violation</th>
             <th>Plate</th>
@@ -1645,59 +1505,41 @@ function EventTable({
             <th>Location</th>
             <th>Evidence</th>
           </tr>
-
         </thead>
-
 
         <tbody>
 
           {violations.map(
             (item, index) => (
-
               <tr key={index}>
 
                 <td>
-
-                  <span
-                    className={
-                      `violation-tag ${
-                        String(
-                          item.Violation
-                        ).toLowerCase()
-                      }`
-                    }
-                  >
+                  <span className="violation-tag">
                     {getViolationName(
                       item.Violation
                     )}
                   </span>
-
                 </td>
-
 
                 <td>
                   {item.Plate ||
                     "UNKNOWN"}
                 </td>
 
-
                 <td>
                   {item.Track_ID ||
                     "NA"}
                 </td>
-
 
                 <td>
                   {item.Time ||
                     "—"}
                 </td>
 
-
                 <td>
                   {item.Location ||
                     "—"}
                 </td>
-
 
                 <td>
 
@@ -1719,7 +1561,6 @@ function EventTable({
                 </td>
 
               </tr>
-
             )
           )}
 
@@ -1733,7 +1574,7 @@ function EventTable({
 
 
 /* =========================================================
-   COMPONENTS
+   SMALL COMPONENTS
 ========================================================= */
 
 function StatCard({
@@ -1771,10 +1612,11 @@ function AnalysisBar({
   value,
   total,
 }) {
-  const percentage =
+  const percent =
     total > 0
       ? Math.round(
-          (value / total) * 100
+          (value / total) *
+            100
         )
       : 0;
 
@@ -1782,7 +1624,6 @@ function AnalysisBar({
     <div className="analysis-item">
 
       <div className="analysis-top">
-
         <span>
           {label}
         </span>
@@ -1790,23 +1631,20 @@ function AnalysisBar({
         <strong>
           {value}
         </strong>
-
       </div>
 
       <div className="analysis-track">
-
         <div
           className="analysis-fill"
           style={{
             width:
-              `${percentage}%`,
+              `${percent}%`,
           }}
         />
-
       </div>
 
       <small>
-        {percentage}% of events
+        {percent}% of events
       </small>
 
     </div>
@@ -1839,160 +1677,6 @@ function HealthItem({
 }
 
 
-function DonutChart({
-  helmetless,
-  triple,
-  wrongWay,
-  mobile,
-  total,
-}) {
-  const radius = 58;
-  const circumference =
-    2 *
-    Math.PI *
-    radius;
-
-  const values = [
-    helmetless,
-    triple,
-    wrongWay,
-    mobile,
-  ];
-
-  const percentages =
-    values.map(
-      (value) =>
-        total
-          ? value / total
-          : 0
-    );
-
-  let offset = 0;
-
-  const circles =
-    percentages.map(
-      (pct, index) => {
-
-        const length =
-          pct *
-          circumference;
-
-        const currentOffset =
-          -offset;
-
-        offset += length;
-
-        return {
-          length,
-          offset:
-            currentOffset,
-          index,
-        };
-      }
-    );
-
-  return (
-    <div className="donut">
-
-      <svg
-        width="190"
-        height="190"
-        viewBox="0 0 190 190"
-      >
-
-        <circle
-          cx="95"
-          cy="95"
-          r={radius}
-          fill="none"
-          stroke="#152b42"
-          strokeWidth="18"
-        />
-
-        {circles.map(
-          (circle) => (
-            circle.length > 0 && (
-              <circle
-                key={circle.index}
-                cx="95"
-                cy="95"
-                r={radius}
-                fill="none"
-                stroke={
-                  [
-                    "#2188ff",
-                    "#42a5ff",
-                    "#68c2ff",
-                    "#94d7ff",
-                  ][
-                    circle.index
-                  ]
-                }
-                strokeWidth="18"
-                strokeDasharray={
-                  `${circle.length} ${circumference}`
-                }
-                strokeDashoffset={
-                  circle.offset
-                }
-                strokeLinecap="round"
-                transform="rotate(-90 95 95)"
-              />
-            )
-          )
-        )}
-
-      </svg>
-
-
-      <div className="donut-center">
-
-        <strong>
-          {total}
-        </strong>
-
-        <span>
-          EVENTS
-        </span>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-function LegendItem({
-  label,
-  value,
-  percentage,
-}) {
-  return (
-    <div className="legend-item">
-
-      <div>
-        <span
-          className="legend-dot"
-        />
-
-        <span>
-          {label}
-        </span>
-      </div>
-
-      <strong>
-        {value}
-        <small>
-          {" "}
-          ({percentage}%)
-        </small>
-      </strong>
-
-    </div>
-  );
-}
-
-
 function EvidenceModal({
   evidence,
   onClose,
@@ -2009,8 +1693,8 @@ function EvidenceModal({
 
       <div
         className="modal"
-        onClick={(e) =>
-          e.stopPropagation()
+        onClick={(event) =>
+          event.stopPropagation()
         }
       >
 
@@ -2029,7 +1713,6 @@ function EvidenceModal({
 
           </div>
 
-
           <button
             className="close-btn"
             onClick={onClose}
@@ -2042,13 +1725,13 @@ function EvidenceModal({
 
         {evidence.url ? (
           <img
-            className="evidence-image"
             src={evidence.url}
             alt="RoadSense evidence"
+            className="evidence-image"
           />
         ) : (
           <div className="empty">
-            Evidence image unavailable.
+            Evidence unavailable.
           </div>
         )}
 
@@ -2118,7 +1801,6 @@ body {
   color: #eaf2fb;
   font-family:
     Inter,
-    ui-sans-serif,
     system-ui,
     -apple-system,
     BlinkMacSystemFont,
@@ -2145,7 +1827,7 @@ a {
   background:
     radial-gradient(
       circle at 80% 0%,
-      rgba(24, 113, 214, 0.14),
+      rgba(24, 113, 214, 0.12),
       transparent 28%
     ),
     #060f1b;
@@ -2169,25 +1851,26 @@ a {
 
 .brand {
   display: flex;
-  align-items: center;
   gap: 12px;
-  padding: 0 8px 29px;
+  align-items: center;
+  padding: 0 8px 30px;
 }
 
 .brand-mark {
   width: 41px;
   height: 41px;
-  border-radius: 12px;
   display: grid;
   place-items: center;
-  background: linear-gradient(
-    135deg,
-    #1982ff,
-    #0b5ed7
-  );
-  color: #fff;
-  font-weight: 800;
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      #1982ff,
+      #0b5ed7
+    );
+  color: white;
   font-size: 19px;
+  font-weight: 800;
   box-shadow:
     0 10px 28px
     rgba(23, 121, 255, 0.25);
@@ -2196,22 +1879,21 @@ a {
 .brand strong {
   display: block;
   font-size: 17px;
-  color: #f4f8fd;
 }
 
 .brand span {
   display: block;
-  margin-top: 3px;
   color: #687d94;
   font-size: 10px;
+  margin-top: 3px;
 }
 
 .nav-title {
-  color: #536a83;
   padding: 0 10px 10px;
+  color: #536a83;
   font-size: 9px;
-  letter-spacing: 1.6px;
   font-weight: 800;
+  letter-spacing: 1.5px;
 }
 
 .main-nav {
@@ -2221,14 +1903,14 @@ a {
 }
 
 .nav-link {
-  color: #7f95ab;
   display: flex;
-  gap: 12px;
   align-items: center;
+  gap: 12px;
   padding: 12px 13px;
   border-radius: 10px;
+  color: #7f95ab;
   font-size: 12px;
-  transition: 0.2s ease;
+  transition: 0.2s;
 }
 
 .nav-link span {
@@ -2238,12 +1920,12 @@ a {
 }
 
 .nav-link:hover {
-  color: #fff;
+  color: white;
   background: #0d2136;
 }
 
 .nav-link.active {
-  color: #fff;
+  color: white;
   background:
     linear-gradient(
       90deg,
@@ -2307,16 +1989,16 @@ a {
 
 .page-header {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
 
 .eyebrow {
   color: #52708f;
   font-size: 9px;
-  letter-spacing: 1.7px;
   font-weight: 800;
+  letter-spacing: 1.7px;
 }
 
 .page-header h1 {
@@ -2336,11 +2018,11 @@ a {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #88dcb9;
-  background: #0b1d2a;
+  padding: 9px 13px;
   border: 1px solid #194337;
   border-radius: 30px;
-  padding: 9px 13px;
+  background: #0b1d2a;
+  color: #88dcb9;
   font-size: 10px;
 }
 
@@ -2358,7 +2040,7 @@ a {
   background:
     radial-gradient(
       circle at 80% 50%,
-      rgba(28, 126, 233, 0.18),
+      rgba(28, 126, 233, 0.16),
       transparent 35%
     ),
     linear-gradient(
@@ -2394,8 +2076,8 @@ a {
   min-width: 170px;
   padding: 18px;
   border: 1px solid #1a3956;
-  background: #0a1a2c;
   border-radius: 14px;
+  background: #0a1a2c;
 }
 
 .hero-stat span {
@@ -2409,7 +2091,7 @@ a {
 .hero-stat strong {
   display: block;
   margin-top: 7px;
-  color: #f4f9ff;
+  color: white;
   font-size: 34px;
 }
 
@@ -2432,21 +2114,10 @@ a {
   position: relative;
   min-height: 132px;
   padding: 18px;
+  overflow: hidden;
   border: 1px solid #172e46;
   border-radius: 15px;
   background: #0a1929;
-  overflow: hidden;
-}
-
-.stat-card:after {
-  content: "";
-  position: absolute;
-  width: 120px;
-  height: 120px;
-  right: -55px;
-  bottom: -65px;
-  border-radius: 50%;
-  background: rgba(30, 126, 230, 0.08);
 }
 
 .stat-icon {
@@ -2454,10 +2125,10 @@ a {
   height: 28px;
   display: grid;
   place-items: center;
+  margin-bottom: 13px;
   border-radius: 8px;
   background: #102b47;
   color: #63afff;
-  margin-bottom: 14px;
   font-size: 11px;
 }
 
@@ -2472,7 +2143,6 @@ a {
   margin: 5px 0 2px;
   color: #f2f7fc;
   font-size: 28px;
-  letter-spacing: -0.8px;
 }
 
 .stat-card small {
@@ -2483,11 +2153,11 @@ a {
 /* PANELS */
 
 .panel {
-  margin-bottom: 17px;
   padding: 20px;
+  margin-bottom: 17px;
   border: 1px solid #172e46;
   border-radius: 16px;
-  background: rgba(9, 25, 41, 0.94);
+  background: rgba(9, 25, 41, 0.96);
   box-shadow:
     0 18px 50px
     rgba(0, 0, 0, 0.08);
@@ -2499,13 +2169,12 @@ a {
     minmax(0, 1.55fr)
     minmax(0, 1fr);
   gap: 17px;
-  margin-bottom: 0;
 }
 
 .panel-heading {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 15px;
   margin-bottom: 16px;
 }
@@ -2513,8 +2182,8 @@ a {
 .panel-label {
   color: #56728f;
   font-size: 8px;
-  letter-spacing: 1.3px;
   font-weight: 800;
+  letter-spacing: 1.3px;
 }
 
 .panel-heading h2 {
@@ -2530,11 +2199,11 @@ a {
 }
 
 .ai-badge {
+  padding: 6px 9px;
   border: 1px solid #194877;
+  border-radius: 20px;
   background: #0e2a46;
   color: #70b6ff;
-  border-radius: 20px;
-  padding: 6px 9px;
   font-size: 8px;
   font-weight: 800;
 }
@@ -2542,18 +2211,18 @@ a {
 /* VIDEO */
 
 .video-panel {
-  padding-bottom: 13px;
+  padding-bottom: 12px;
 }
 
 .video-wrapper {
   position: relative;
   width: 100%;
+  min-height: 390px;
   aspect-ratio: 16 / 9;
-  min-height: 340px;
   overflow: hidden;
+  border: 1px solid #17304a;
   border-radius: 13px;
-  background: #02070e;
-  border: 1px solid #172e46;
+  background: #01070d;
 }
 
 .main-video {
@@ -2561,16 +2230,16 @@ a {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #02070e;
+  background: #01070d;
 }
 
 .video-overlay {
   position: absolute;
   inset: 0;
-  pointer-events: none;
   display: grid;
   place-items: center;
-  background: rgba(2, 8, 14, 0.35);
+  background: rgba(1, 7, 13, 0.28);
+  pointer-events: none;
 }
 
 .video-loader {
@@ -2578,23 +2247,21 @@ a {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  padding: 17px 20px;
+  border: 1px solid #1a344d;
+  border-radius: 12px;
+  background: rgba(3, 11, 19, 0.8);
   color: #9ab0c8;
   font-size: 10px;
-  background: rgba(3, 11, 19, 0.72);
-  padding: 17px 20px;
-  border-radius: 12px;
-  border: 1px solid #1a344d;
 }
 
 .loader-circle {
-  width: 25px;
-  height: 25px;
-  border-radius: 50%;
-  border:
-    2px solid #24425e;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #24425e;
   border-top-color: #55aaff;
-  animation:
-    spin 0.8s linear infinite;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -2611,7 +2278,7 @@ a {
   justify-content: center;
   flex-direction: column;
   gap: 8px;
-  padding: 25px;
+  padding: 30px;
   text-align: center;
   background:
     radial-gradient(
@@ -2630,51 +2297,45 @@ a {
   background: #36201c;
   color: #ffab8c;
   font-weight: 800;
+  font-size: 17px;
 }
 
 .video-error strong {
-  color: #eaf1f8;
+  color: #edf4fa;
   font-size: 13px;
 }
 
 .video-error span {
-  max-width: 390px;
-  color: #778da4;
-  font-size: 10px;
-  line-height: 1.6;
-}
-
-.video-error b {
-  color: #8fb3d6;
-  margin-left: 4px;
+  color: #71879e;
+  font-size: 9px;
 }
 
 .open-video-btn {
   margin-top: 8px;
-  padding: 8px 12px;
-  color: #fff;
-  background: #106edb;
+  padding: 9px 13px;
+  border: 0;
   border-radius: 8px;
+  background: #1478ee;
+  color: #fff;
   font-size: 10px;
 }
 
-.play-overlay {
+.floating-play {
   position: absolute;
-  left: 19px;
-  bottom: 45px;
-  width: 42px;
-  height: 42px;
+  left: 17px;
+  bottom: 48px;
+  width: 40px;
+  height: 40px;
+  z-index: 5;
   border: 1px solid #2b608f;
   border-radius: 50%;
-  background: rgba(8, 26, 43, 0.9);
-  color: #eaf5ff;
-  z-index: 4;
+  background: rgba(8, 26, 43, 0.92);
+  color: #eef7ff;
 }
 
 .video-footer {
   display: flex;
   justify-content: space-between;
-  align-items: center;
   padding: 10px 2px 0;
 }
 
@@ -2688,11 +2349,7 @@ a {
   font-size: 9px;
 }
 
-/* INTELLIGENCE */
-
-.intel-list {
-  padding-top: 5px;
-}
+/* ANALYSIS */
 
 .analysis-item {
   margin-bottom: 23px;
@@ -2738,49 +2395,21 @@ a {
   font-size: 8px;
 }
 
-.mini-summary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 9px;
-  margin-top: 8px;
-}
-
-.mini-summary div {
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid #172e46;
-  background: #0a1d30;
-}
-
-.mini-summary span {
-  display: block;
-  color: #526a83;
-  font-size: 8px;
-  letter-spacing: 1px;
-}
-
-.mini-summary strong {
-  display: block;
-  margin-top: 5px;
-  color: #dce8f3;
-  font-size: 14px;
-}
-
-/* HOURLY CHART */
+/* CHART */
 
 .hour-chart {
   height: 215px;
   display: flex;
-  justify-content: center;
   align-items: flex-end;
+  justify-content: center;
   gap: 52px;
-  padding: 18px 18px 0;
+  padding: 18px;
   border-bottom: 1px solid #172e46;
 }
 
 .hour-column {
-  height: 100%;
   width: 48px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2823,19 +2452,16 @@ a {
 
 /* MAP */
 
-.map-preview-panel {
-  overflow: hidden;
-}
-
 .mini-map {
   height: 215px;
   overflow: hidden;
-  border-radius: 12px;
   border: 1px solid #17304a;
+  border-radius: 12px;
   background: #0b1827;
 }
 
-.mini-map iframe {
+.mini-map iframe,
+.map-page-card iframe {
   width: 100%;
   height: 100%;
   border: 0;
@@ -2843,8 +2469,8 @@ a {
 
 .location-footer {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   margin-top: 12px;
 }
 
@@ -2854,8 +2480,8 @@ a {
   display: grid;
   place-items: center;
   border-radius: 8px;
-  color: #65b1ff;
   background: #0d2b47;
+  color: #65b1ff;
 }
 
 .location-footer strong {
@@ -2867,11 +2493,11 @@ a {
 .location-footer span {
   display: block;
   color: #587087;
-  font-size: 8px;
   margin-top: 3px;
+  font-size: 8px;
 }
 
-/* SYSTEM */
+/* HEALTH */
 
 .health-grid {
   display: grid;
@@ -2885,8 +2511,8 @@ a {
   align-items: center;
   gap: 9px;
   padding: 12px;
-  border-radius: 10px;
   border: 1px solid #172e46;
+  border-radius: 10px;
   background: #0a1b2c;
 }
 
@@ -2924,7 +2550,7 @@ a {
 
 table {
   width: 100%;
-  min-width: 900px;
+  min-width: 920px;
   border-collapse: collapse;
 }
 
@@ -2954,20 +2580,21 @@ tr:hover td {
   display: inline-block;
   padding: 5px 8px;
   border-radius: 6px;
-  color: #7bbaff;
   background: #102c48;
+  color: #7bbaff;
   font-size: 8px;
   font-weight: 800;
   white-space: nowrap;
 }
 
-.evidence-btn {
-  padding: 6px 9px;
+.evidence-btn,
+.export-btn {
+  padding: 7px 10px;
   border: 1px solid #205183;
-  border-radius: 6px;
+  border-radius: 7px;
   background: #0d2944;
   color: #76b9ff;
-  font-size: 8px;
+  font-size: 9px;
 }
 
 .evidence-btn:hover,
@@ -2975,119 +2602,27 @@ tr:hover td {
   background: #123a60;
 }
 
-.export-btn {
-  padding: 8px 11px;
-  border: 1px solid #215082;
-  border-radius: 7px;
-  background: #0d2a46;
-  color: #78b9ff;
-  font-size: 9px;
-}
-
-.export-btn.large {
-  padding: 9px 13px;
-}
-
-.recent-panel {
-  margin-top: 17px;
-}
-
-/* ANALYTICS */
+/* ANALYTICS PAGE */
 
 .analytics-layout {
   display: grid;
-  grid-template-columns:
-    1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 17px;
-}
-
-.analytics-donut-card {
-  min-height: 390px;
-}
-
-.donut-layout {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 32px;
-  min-height: 270px;
-}
-
-.donut {
-  position: relative;
-  width: 190px;
-  height: 190px;
-  flex-shrink: 0;
-}
-
-.donut-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-
-.donut-center strong {
-  color: #edf5fc;
-  font-size: 27px;
-}
-
-.donut-center span {
-  color: #5e7590;
-  font-size: 8px;
-  letter-spacing: 1.1px;
-}
-
-.legend {
-  flex: 1;
-}
-
-.legend-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 15px;
-  padding: 12px 0;
-  border-bottom: 1px solid #162c43;
-  font-size: 10px;
-}
-
-.legend-item > div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.legend-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #3a9aff;
-}
-
-.legend-item strong {
-  color: #eff6fc;
-}
-
-.legend-item small {
-  color: #5b728a;
-  font-weight: 400;
 }
 
 .large-hour-chart {
   height: 290px;
   display: flex;
-  justify-content: center;
   align-items: flex-end;
+  justify-content: center;
   gap: 60px;
   padding: 20px;
   border-bottom: 1px solid #172e46;
 }
 
 .large-hour-column {
-  height: 100%;
   width: 52px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3128,50 +2663,16 @@ tr:hover td {
   margin-top: 8px;
 }
 
-.analytics-summary {
-  display: grid;
-  grid-template-columns:
-    repeat(4, 1fr);
-  gap: 10px;
-}
-
-.summary-box {
-  padding: 16px;
-  border-radius: 11px;
-  border: 1px solid #172e46;
-  background: #0a1b2c;
-}
-
-.summary-box span {
-  display: block;
-  color: #587089;
-  font-size: 8px;
-  letter-spacing: 1px;
-}
-
-.summary-box strong {
-  display: block;
-  color: #eef6fc;
-  margin-top: 7px;
-  font-size: 22px;
-}
-
 /* MAP PAGE */
 
 .map-page-card {
-  height: 64vh;
+  height: 65vh;
   min-height: 510px;
   overflow: hidden;
+  margin-bottom: 17px;
   border: 1px solid #172e46;
   border-radius: 17px;
   background: #0a1725;
-  margin-bottom: 17px;
-}
-
-.full-map {
-  width: 100%;
-  height: 100%;
-  border: 0;
 }
 
 .map-info-grid {
@@ -3180,13 +2681,13 @@ tr:hover td {
   gap: 17px;
 }
 
-.location-card h2 {
-  margin: 7px 0;
+.location-title {
+  margin: 8px 0;
   color: #eaf2fa;
   font-size: 18px;
 }
 
-.location-card p {
+.muted-text {
   margin: 0;
   color: #657b92;
   font-size: 10px;
@@ -3196,24 +2697,24 @@ tr:hover td {
 
 .violation-toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 15px;
   margin-bottom: 17px;
 }
 
-.record-count {
-  color: #8196aa;
+.violation-toolbar strong {
+  color: #92a7bb;
   font-size: 10px;
 }
 
 .search-input {
-  width: 310px;
+  width: 320px;
   max-width: 100%;
   padding: 9px 11px;
+  outline: none;
   border: 1px solid #1b344e;
   border-radius: 8px;
-  outline: none;
   background: #081725;
   color: #dce8f3;
   font-size: 10px;
@@ -3255,7 +2756,6 @@ tr:hover td {
 .modal-heading {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
   margin-bottom: 15px;
 }
 
@@ -3293,9 +2793,9 @@ tr:hover td {
 
 .evidence-details div {
   padding: 11px;
+  border: 1px solid #172e46;
   border-radius: 9px;
   background: #0d2033;
-  border: 1px solid #172e46;
 }
 
 .evidence-details span {
@@ -3306,8 +2806,8 @@ tr:hover td {
 
 .evidence-details strong {
   display: block;
-  color: #dce7f1;
   margin-top: 5px;
+  color: #dce7f1;
   font-size: 9px;
 }
 
@@ -3331,11 +2831,11 @@ tr:hover td {
 }
 
 .footer span {
-  color: #257fe4;
   margin: 0 5px;
+  color: #257fe4;
 }
 
-/* RESPONSIVE */
+/* MOBILE */
 
 @media (max-width: 1180px) {
 
@@ -3344,8 +2844,8 @@ tr:hover td {
   }
 
   .rs-main {
-    margin-left: 215px;
     width: calc(100% - 215px);
+    margin-left: 215px;
     padding: 25px;
   }
 
@@ -3379,8 +2879,8 @@ tr:hover td {
   }
 
   .rs-main {
-    margin-left: 0;
     width: 100%;
+    margin-left: 0;
     padding: 18px;
   }
 
@@ -3401,25 +2901,14 @@ tr:hover td {
     margin-top: 18px;
   }
 
-  .stats-grid {
+  .stats-grid,
+  .health-grid,
+  .map-info-grid {
     grid-template-columns: 1fr;
   }
 
   .video-wrapper {
     min-height: 245px;
-  }
-
-  .health-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .map-info-grid,
-  .analytics-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .donut-layout {
-    flex-direction: column;
   }
 
   .violation-toolbar {
@@ -3429,6 +2918,10 @@ tr:hover td {
 
   .search-input {
     width: 100%;
+  }
+
+  .evidence-details {
+    grid-template-columns: 1fr;
   }
 
 }
