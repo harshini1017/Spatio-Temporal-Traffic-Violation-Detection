@@ -181,6 +181,57 @@ Sample screenshots of detections and dashboard analytics are available in the **
 - Urban Mobility Analytics
 
 ---
+▶️ How to Run
+Prerequisites
+
+Make sure the following are installed:
+
+Python
+Node.js
+npm
+Backend
+
+Open a terminal and run:
+
+cd backend
+pip install -r requirements.txt
+python backend.py
+
+The backend will run at:
+
+http://localhost:5000
+Frontend
+
+Open a new terminal and run:
+
+cd frontend
+npm install
+npm start
+
+The dashboard will open at:
+
+http://localhost:3000
+Run the System
+Start the Flask backend.
+Start the React frontend.
+Open the dashboard in your browser.
+Provide the required video or RTSP camera input.
+The system processes the video and displays detected traffic violations and evidence on the dashboard.
+
+Note: Make sure Python, Node.js, and npm are installed before running the project.
+
+📊 Output
+
+The system generates traffic violation records containing information such as:
+
+Violation type
+Timestamp
+Track ID
+Location
+Evidence snapshot
+Vehicle/plate information when available
+
+The results can be reviewed through the web dashboard.
 
 # 👨‍💻 Authors
 
