@@ -750,3 +750,274 @@ function ViolationsPage({
         <div className="table-wrapper">
           <table className="events-table">
             <thead>
+              <tr>
+                <th>VIOLATION</th>
+                <th>TIME</th>
+                <th>TRACK ID</th>
+                <th>PLATE</th>
+                <th>LOCATION</th>
+                <th>EVIDENCE</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filteredRows.map((row, index) => (
+                <tr key={`${row.Time}-${row.Violation}-${index}`}>
+                  <td>
+                    <span className={getViolationClass(row.Violation)}>
+                      {formatViolation(row.Violation)}
+                    </span>
+                  </td>
+
+                  <td>
+                    <span className="table-time">
+                      <Icon name="clock" size={15} />
+                      {formatTime(row.Time)}
+                    </span>
+                  </td>
+
+                  <td>{row.Track_ID || "NA"}</td>
+
+                  <td>
+                    <span className="plate-value">
+                      {row.Plate || "UNKNOWN"}
+                    </span>
+                  </td>
+
+                  <td>{row.Location || "Saranathan Junction, Trichy"}</td>
+
+                  <td>
+                    {getSnapshotName(row.Snapshot) ? (
+                      <button
+                        className="evidence-button"
+                        onClick={() => setOpenEvidence(row)}
+                      >
+                        View
+                      </button>
+                    ) : (
+                      <span className="muted">Unavailable</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+
+              {filteredRows.length === 0 && (
+                <tr>
+                  <td colSpan="6">
+                    <div className="table-empty">
+                      No violation records found.
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {openEvidence && (
+        <EvidenceModal
+          row={openEvidence}
+          onClose={() => setOpenEvidence(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function EvidenceModal({ row, onClose }) {
+  const imageUrl = getEvidenceUrl(row.Snapshot);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="evidence-modal"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div>
+            <div className="panel-eyebrow">DIGITAL EVIDENCE</div>
+            <h2>{formatViolation(row.Violation)}</h2>
+          </div>
+
+          <button className="close-button" onClick={onClose}>
+            <Icon name="close" size={20} />
+          </button>
+        </div>
+
+        <div className="evidence-image-wrapper">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={`${formatViolation(row.Violation)} evidence`}
+              className="evidence-image"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+                event.currentTarget.parentElement.classList.add(
+                  "image-unavailable"
+                );
+              }}
+            />
+          ) : (
+            <div className="image-placeholder">
+              Evidence image unavailable
+            </div>
+          )}
+        </div>
+
+        <div className="evidence-details">
+          <div>
+            <span>Violation</span>
+            <strong>{formatViolation(row.Violation)}</strong>
+          </div>
+
+          <div>
+            <span>Timestamp</span>
+            <strong>{formatTime(row.Time)}</strong>
+          </div>
+
+          <div>
+            <span>Track ID</span>
+            <strong>{row.Track_ID || "NA"}</strong>
+          </div>
+
+          <div>
+            <span>Plate</span>
+            <strong>{row.Plate || "UNKNOWN"}</strong>
+          </div>
+
+          <div>
+            <span>Location</span>
+            <strong>{row.Location || "Unknown"}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard({ page = "dashboard" }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedViolation, setSelectedViolation] = useState("all");
+  const [openEvidence, setOpenEvidence] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadViolations() {
+      try {
+        setLoading(true);
+        setApiError("");
+
+        const response = await fetch(`${API_BASE}/api/violations`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        let records = [];
+
+        if (Array.isArray(data)) {
+          records = data;
+        } else if (Array.isArray(data.violations)) {
+          records = data.violations;
+        } else if (Array.isArray(data.data)) {
+          records = data.data;
+        }
+
+        if (active) {
+          setRows(records);
+        }
+      } catch (error) {
+        if (active) {
+          setRows([]);
+          setApiError(
+            "Unable to connect to the traffic monitoring backend."
+          );
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadViolations();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const counts = useMemo(() => {
+    const result = {
+      helmetless: 0,
+      triple_riding: 0,
+      mobile_usage: 0,
+      wrong_way: 0,
+    };
+
+    rows.forEach((row) => {
+      const key = normalizeViolation(row.Violation);
+
+      if (Object.prototype.hasOwnProperty.call(result, key)) {
+        result[key] += 1;
+      }
+    });
+
+    return result;
+  }, [rows]);
+
+  const total = rows.length;
+
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-logo">RS</div>
+        <div className="loading-spinner" />
+        <h2>Loading RoadSense AI</h2>
+        <p>Connecting to the traffic intelligence backend...</p>
+      </div>
+    );
+  }
+
+  return (
+    <AppShell page={page} total={total}>
+      {apiError && (
+        <div className="api-warning">
+          <Icon name="alert" size={18} />
+          <span>{apiError}</span>
+        </div>
+      )}
+
+      {page === "violations" ? (
+        <ViolationsPage
+          rows={rows}
+          search={search}
+          setSearch={setSearch}
+          selectedViolation={selectedViolation}
+          setSelectedViolation={setSelectedViolation}
+          openEvidence={openEvidence}
+          setOpenEvidence={setOpenEvidence}
+        />
+      ) : (
+        <DashboardPage
+          rows={rows}
+          counts={counts}
+          total={total}
+          search={search}
+          setSearch={setSearch}
+          selectedViolation={selectedViolation}
+          setSelectedViolation={setSelectedViolation}
+          openEvidence={openEvidence}
+          setOpenEvidence={setOpenEvidence}
+        />
+      )}
+    </AppShell>
+  );
+}
