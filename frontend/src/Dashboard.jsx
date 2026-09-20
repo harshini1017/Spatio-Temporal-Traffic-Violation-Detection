@@ -12,25 +12,46 @@ function Dashboard({ page = "dashboard" }) {
   const [search, setSearch] = useState("");
   const [selectedEvidence, setSelectedEvidence] = useState(null);
 
+  // =========================
+  // BACKEND CONNECTION
+  // =========================
+
   useEffect(() => {
-    fetch(`${API_BASE}/api/violations`)
-      .then((response) => {
+    const fetchViolations = async () => {
+      try {
+        setLoading(true);
+
+        const response = await fetch(
+          `${API_BASE}/api/violations`
+        );
+
         if (!response.ok) {
-          throw new Error("Failed to fetch violations");
+          throw new Error(
+            `Backend returned ${response.status}`
+          );
         }
-        return response.json();
-      })
-      .then((data) => {
+
+        const data = await response.json();
+
         setViolations(Array.isArray(data) ? data : []);
-      })
-      .catch((error) => {
-        console.error("Violation API error:", error);
+      } catch (error) {
+        console.error(
+          "RoadSense backend connection error:",
+          error
+        );
+
         setViolations([]);
-      })
-      .finally(() => {
+      } finally {
         setLoading(false);
-      });
+      }
+    };
+
+    fetchViolations();
   }, []);
+
+  // =========================
+  // DATA HELPERS
+  // =========================
 
   const getViolationType = (row) => {
     return (
@@ -71,17 +92,27 @@ function Dashboard({ page = "dashboard" }) {
       row.evidence ||
       "";
 
-    if (!value) return null;
+    if (!value) {
+      return null;
+    }
 
     const filename = String(value)
       .replaceAll("\\", "/")
       .split("/")
       .pop();
 
-    if (!filename) return null;
+    if (!filename) {
+      return null;
+    }
 
-    return `${API_BASE}/snapshots/${encodeURIComponent(filename)}`;
+    return `${API_BASE}/snapshots/${encodeURIComponent(
+      filename
+    )}`;
   };
+
+  // =========================
+  // FILTER
+  // =========================
 
   const filteredViolations = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -90,41 +121,62 @@ function Dashboard({ page = "dashboard" }) {
       return violations;
     }
 
-    return violations.filter((row) => {
-      return Object.values(row).some((value) =>
-        String(value).toLowerCase().includes(query)
-      );
-    });
+    return violations.filter((row) =>
+      Object.values(row).some((value) =>
+        String(value)
+          .toLowerCase()
+          .includes(query)
+      )
+    );
   }, [violations, search]);
+
+  // =========================
+  // COUNTS
+  // =========================
 
   const counts = useMemo(() => {
     const result = {
       total: violations.length,
       helmet: 0,
-      phone: 0,
-      triple: 0,
+      mobile: 0,
+      excessive: 0,
       wrongWay: 0,
     };
 
     violations.forEach((row) => {
-      const type = getViolationType(row).toLowerCase();
+      const type =
+        getViolationType(row).toLowerCase();
 
-      if (type.includes("helmet")) result.helmet += 1;
-      if (type.includes("phone") || type.includes("mobile")) {
-        result.phone += 1;
+      if (type.includes("helmet")) {
+        result.helmet += 1;
       }
+
+      if (
+        type.includes("phone") ||
+        type.includes("mobile")
+      ) {
+        result.mobile += 1;
+      }
+
       if (
         type.includes("triple") ||
         type.includes("rider") ||
         type.includes("excess")
       ) {
-        result.triple += 1;
+        result.excessive += 1;
       }
-      if (type.includes("wrong")) result.wrongWay += 1;
+
+      if (type.includes("wrong")) {
+        result.wrongWay += 1;
+      }
     });
 
     return result;
   }, [violations]);
+
+  // =========================
+  // NAVIGATION
+  // =========================
 
   const navigation = [
     {
@@ -137,103 +189,125 @@ function Dashboard({ page = "dashboard" }) {
       path: "/violations",
       key: "violations",
     },
-    {
-      label: "Analytics",
-      path: "/analytics",
-      key: "analytics",
-    },
-    {
-      label: "Smart Parking",
-      path: "/parking",
-      key: "parking",
-    },
-    {
-      label: "ANPR",
-      path: "/anpr",
-      key: "anpr",
-    },
   ];
 
+  // =========================
+  // CSV EXPORT
+  // =========================
+
   const exportCSV = () => {
-    if (!violations.length) return;
+    if (!violations.length) {
+      return;
+    }
 
     const headers = Object.keys(violations[0]);
 
-    const csvRows = [
+    const rows = [
       headers.join(","),
+
       ...violations.map((row) =>
         headers
           .map((header) => {
             const value = row[header] ?? "";
-            return `"${String(value).replaceAll('"', '""')}"`;
+
+            return `"${String(value).replaceAll(
+              '"',
+              '""'
+            )}"`;
           })
           .join(",")
       ),
     ];
 
-    const blob = new Blob([csvRows.join("\n")], {
-      type: "text/csv;charset=utf-8;",
-    });
+    const blob = new Blob(
+      [rows.join("\n")],
+      {
+        type: "text/csv;charset=utf-8;",
+      }
+    );
 
     const url = URL.createObjectURL(blob);
+
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = "roadsense_violations.csv";
+    link.download =
+      "roadsense_violations.csv";
+
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
 
     URL.revokeObjectURL(url);
   };
 
-  const pageTitle = {
-    dashboard: "Mobility Intelligence Dashboard",
-    violations: "Traffic Violations",
-    analytics: "Traffic Analytics",
-    parking: "Smart Parking",
-    anpr: "Automatic Number Plate Recognition",
-  };
+  // =========================
+  // PAGE CONTENT
+  // =========================
 
-  const pageDescription = {
-    dashboard:
-      "Real-time overview of vehicle activity, traffic events and system performance.",
-    violations:
-      "Review and analyse traffic violations detected by the RoadSense Edge-AI system.",
-    analytics:
-      "Analyse observed traffic events and mobility patterns from processed CCTV data.",
-    parking:
-      "Monitor parking-slot occupancy and parking utilisation.",
-    anpr:
-      "Vehicle identification and number-plate recognition overview.",
-  };
+  const isDashboard =
+    page === "dashboard";
+
+  const title = isDashboard
+    ? "Mobility Intelligence Dashboard"
+    : "Traffic Violations";
+
+  const description = isDashboard
+    ? "Overview of vehicle activity, detected traffic events and system status."
+    : "Review and analyse traffic violations detected by the RoadSense Edge-AI system.";
 
   return (
     <div style={styles.app}>
-      {/* SIDEBAR */}
+
+      {/* =====================================
+          SIDEBAR
+      ===================================== */}
+
       <aside style={styles.sidebar}>
+
+        {/* BRAND */}
+
         <div style={styles.brand}>
-          <div style={styles.brandMark}>R</div>
+          <div style={styles.brandMark}>
+            R
+          </div>
 
           <div>
-            <div style={styles.brandName}>RoadSense</div>
-            <div style={styles.brandSubtitle}>Mobility Intelligence</div>
+            <div style={styles.brandName}>
+              RoadSense
+            </div>
+
+            <div style={styles.brandSubtitle}>
+              Mobility Intelligence
+            </div>
           </div>
         </div>
 
-        <div style={styles.sidebarSection}>MAIN</div>
+        {/* MAIN */}
+
+        <div style={styles.sidebarSection}>
+          MAIN
+        </div>
 
         <nav>
           {navigation.map((item) => (
             <button
               key={item.key}
-              onClick={() => navigate(item.path)}
+              onClick={() =>
+                navigate(item.path)
+              }
               style={{
                 ...styles.navItem,
-                ...(page === item.key ? styles.navItemActive : {}),
+
+                ...(page === item.key
+                  ? styles.navItemActive
+                  : {}),
               }}
             >
               <span
                 style={{
                   ...styles.navIndicator,
+
                   ...(page === item.key
                     ? styles.navIndicatorActive
                     : {}),
@@ -245,49 +319,84 @@ function Dashboard({ page = "dashboard" }) {
           ))}
         </nav>
 
+        {/* SIDEBAR BOTTOM */}
+
         <div style={styles.sidebarBottom}>
+
           <div style={styles.systemBox}>
+
             <div style={styles.systemDot} />
 
             <div>
-              <div style={styles.systemTitle}>System Online</div>
+              <div style={styles.systemTitle}>
+                System Online
+              </div>
+
               <div style={styles.systemText}>
                 Edge services operational
               </div>
             </div>
+
           </div>
 
-          <div style={styles.version}>RoadSense AI • v1.0</div>
+          <div style={styles.version}>
+            RoadSense AI • v1.0
+          </div>
+
         </div>
       </aside>
 
-      {/* MAIN */}
+      {/* =====================================
+          MAIN CONTENT
+      ===================================== */}
+
       <main style={styles.main}>
+
+        {/* HEADER */}
+
         <header style={styles.header}>
+
           <div>
-            <div style={styles.breadcrumb}>ROADSENSE / {page}</div>
+
+            <div style={styles.breadcrumb}>
+              ROADSENSE /{" "}
+              {isDashboard
+                ? "DASHBOARD"
+                : "VIOLATIONS"}
+            </div>
 
             <h1 style={styles.title}>
-              {pageTitle[page] || "Dashboard"}
+              {title}
             </h1>
 
             <p style={styles.description}>
-              {pageDescription[page] || ""}
+              {description}
             </p>
+
           </div>
 
           <div style={styles.headerStatus}>
             <span style={styles.liveDot} />
             Live System
           </div>
+
         </header>
 
-        {/* DASHBOARD */}
-        {page === "dashboard" && (
+        {/* =====================================
+            DASHBOARD PAGE
+        ===================================== */}
+
+        {isDashboard && (
           <>
+            {/* HERO */}
+
             <section style={styles.hero}>
+
               <div>
-                <div style={styles.heroLabel}>EDGE-AI MOBILITY PLATFORM</div>
+
+                <div style={styles.heroLabel}>
+                  EDGE-AI MOBILITY PLATFORM
+                </div>
 
                 <h2 style={styles.heroTitle}>
                   Intelligent road monitoring
@@ -296,13 +405,16 @@ function Dashboard({ page = "dashboard" }) {
                 </h2>
 
                 <p style={styles.heroText}>
-                  RoadSense analyses vehicle movement locally at the
-                  edge to identify traffic events, generate evidence
+                  RoadSense analyses vehicle movement
+                  locally at the edge to identify
+                  traffic events, generate evidence
                   and provide mobility intelligence.
                 </p>
+
               </div>
 
               <div style={styles.heroMetric}>
+
                 <div style={styles.heroMetricLabel}>
                   DETECTED EVENTS
                 </div>
@@ -312,12 +424,17 @@ function Dashboard({ page = "dashboard" }) {
                 </div>
 
                 <div style={styles.heroMetricSub}>
-                  From processed traffic data
+                  Processed traffic events
                 </div>
+
               </div>
+
             </section>
 
+            {/* KPI */}
+
             <section style={styles.kpiGrid}>
+
               <KPI
                 label="Total Events"
                 value={counts.total}
@@ -332,58 +449,64 @@ function Dashboard({ page = "dashboard" }) {
 
               <KPI
                 label="Mobile Usage"
-                value={counts.phone}
+                value={counts.mobile}
                 description="Phone-use events"
               />
 
               <KPI
                 label="Excess Riders"
-                value={counts.triple}
+                value={counts.excessive}
                 description="Multiple-rider events"
               />
+
             </section>
 
+            {/* INTELLIGENCE + STATUS */}
+
             <section style={styles.twoColumn}>
+
               <div style={styles.card}>
+
                 <CardHeader
                   title="Violation Intelligence"
-                  subtitle="Distribution of detected events"
+                  subtitle="Distribution of detected traffic events"
                 />
 
-                <div style={styles.chartArea}>
-                  <Bar
-                    label="Helmet"
-                    value={counts.helmet}
-                    total={counts.total}
-                  />
+                <Bar
+                  label="Helmet Violations"
+                  value={counts.helmet}
+                  total={counts.total}
+                />
 
-                  <Bar
-                    label="Mobile"
-                    value={counts.phone}
-                    total={counts.total}
-                  />
+                <Bar
+                  label="Mobile Phone Usage"
+                  value={counts.mobile}
+                  total={counts.total}
+                />
 
-                  <Bar
-                    label="Excess Riders"
-                    value={counts.triple}
-                    total={counts.total}
-                  />
+                <Bar
+                  label="Excess Rider Count"
+                  value={counts.excessive}
+                  total={counts.total}
+                />
 
-                  <Bar
-                    label="Wrong Way"
-                    value={counts.wrongWay}
-                    total={counts.total}
-                  />
-                </div>
+                <Bar
+                  label="Wrong-Way Movement"
+                  value={counts.wrongWay}
+                  total={counts.total}
+                />
+
               </div>
 
               <div style={styles.card}>
+
                 <CardHeader
                   title="System Status"
-                  subtitle="Current platform availability"
+                  subtitle="RoadSense service availability"
                 />
 
                 <div style={styles.statusList}>
+
                   <StatusRow
                     name="Edge AI Processing"
                     status="Operational"
@@ -403,11 +526,17 @@ function Dashboard({ page = "dashboard" }) {
                     name="Backend API"
                     status="Connected"
                   />
+
                 </div>
+
               </div>
+
             </section>
 
+            {/* VIDEO */}
+
             <section style={styles.card}>
+
               <CardHeader
                 title="Processed Traffic Video"
                 subtitle="Reference output from the RoadSense pipeline"
@@ -425,9 +554,13 @@ function Dashboard({ page = "dashboard" }) {
 
                 Your browser does not support video playback.
               </video>
+
             </section>
 
+            {/* RECENT EVENTS */}
+
             <section style={styles.card}>
+
               <CardHeader
                 title="Recent Traffic Events"
                 subtitle={`${filteredViolations.length} records`}
@@ -448,13 +581,18 @@ function Dashboard({ page = "dashboard" }) {
                 getSnapshot={getSnapshot}
                 onEvidence={setSelectedEvidence}
               />
+
             </section>
           </>
         )}
 
-        {/* VIOLATIONS */}
-        {page === "violations" && (
+        {/* =====================================
+            VIOLATIONS PAGE
+        ===================================== */}
+
+        {!isDashboard && (
           <section style={styles.card}>
+
             <CardHeader
               title="Traffic Violation Records"
               subtitle="Detected events from the RoadSense backend"
@@ -475,171 +613,77 @@ function Dashboard({ page = "dashboard" }) {
               getSnapshot={getSnapshot}
               onEvidence={setSelectedEvidence}
             />
+
           </section>
         )}
 
-        {/* ANALYTICS */}
-        {page === "analytics" && (
-          <>
-            <section style={styles.kpiGrid}>
-              <KPI
-                label="Total Events"
-                value={counts.total}
-                description="All recorded events"
-              />
-
-              <KPI
-                label="Helmet"
-                value={counts.helmet}
-                description="Helmet-related events"
-              />
-
-              <KPI
-                label="Mobile"
-                value={counts.phone}
-                description="Mobile-use events"
-              />
-
-              <KPI
-                label="Wrong Way"
-                value={counts.wrongWay}
-                description="Direction-related events"
-              />
-            </section>
-
-            <section style={styles.card}>
-              <CardHeader
-                title="Event Distribution"
-                subtitle="Current recorded traffic events"
-              />
-
-              <div style={styles.chartAreaLarge}>
-                <Bar
-                  label="Helmet Violations"
-                  value={counts.helmet}
-                  total={counts.total}
-                />
-
-                <Bar
-                  label="Mobile Phone Usage"
-                  value={counts.phone}
-                  total={counts.total}
-                />
-
-                <Bar
-                  label="Excess Rider Count"
-                  value={counts.triple}
-                  total={counts.total}
-                />
-
-                <Bar
-                  label="Wrong-Way Movement"
-                  value={counts.wrongWay}
-                  total={counts.total}
-                />
-              </div>
-            </section>
-          </>
-        )}
-
-        {/* PARKING */}
-        {page === "parking" && (
-          <section style={styles.card}>
-            <CardHeader
-              title="Smart Parking"
-              subtitle="Parking monitoring interface"
-            />
-
-            <div style={styles.parkingHeader}>
-              <div>
-                <div style={styles.parkingNumber}>12</div>
-                <div style={styles.smallText}>
-                  Monitored parking slots
-                </div>
-              </div>
-
-              <div style={styles.parkingStatus}>
-                Parking detection module
-                <strong>Operational</strong>
-              </div>
-            </div>
-
-            <div style={styles.parkingGrid}>
-              {Array.from({ length: 12 }).map((_, index) => (
-                <div key={index} style={styles.parkingSlot}>
-                  <span>Slot {index + 1}</span>
-                  <strong>Monitoring</strong>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* ANPR */}
-        {page === "anpr" && (
-          <section style={styles.card}>
-            <CardHeader
-              title="Automatic Number Plate Recognition"
-              subtitle="Vehicle identification module"
-            />
-
-            <div style={styles.anprContent}>
-              <div style={styles.anprIcon}>ANPR</div>
-
-              <h2 style={styles.anprTitle}>
-                Number plate recognition
-              </h2>
-
-              <p style={styles.anprText}>
-                RoadSense uses vehicle and number-plate detection
-                to associate recognised vehicles with traffic events.
-              </p>
-
-              <div style={styles.anprStatus}>
-                Module available in the RoadSense architecture
-              </div>
-            </div>
-          </section>
-        )}
+        {/* FOOTER */}
 
         <footer style={styles.footer}>
-          <span>RoadSense AI</span>
-          <span>Edge-AI Based Mobility Intelligence Platform</span>
+          <span>
+            RoadSense AI
+          </span>
+
+          <span>
+            Edge-AI Based Mobility Intelligence Platform
+          </span>
         </footer>
+
       </main>
 
-      {/* EVIDENCE MODAL */}
+      {/* =====================================
+          EVIDENCE MODAL
+      ===================================== */}
+
       {selectedEvidence && (
         <div
           style={styles.modalOverlay}
-          onClick={() => setSelectedEvidence(null)}
+          onClick={() =>
+            setSelectedEvidence(null)
+          }
         >
+
           <div
             style={styles.modal}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
+
             <div style={styles.modalHeader}>
+
               <div>
+
                 <div style={styles.modalEyebrow}>
                   EVIDENCE
                 </div>
 
                 <h2 style={styles.modalTitle}>
-                  {getViolationType(selectedEvidence)}
+                  {getViolationType(
+                    selectedEvidence
+                  )}
                 </h2>
+
               </div>
 
               <button
                 style={styles.closeButton}
-                onClick={() => setSelectedEvidence(null)}
+                onClick={() =>
+                  setSelectedEvidence(null)
+                }
               >
                 ×
               </button>
+
             </div>
 
-            {getSnapshot(selectedEvidence) ? (
+            {getSnapshot(
+              selectedEvidence
+            ) ? (
               <img
-                src={getSnapshot(selectedEvidence)}
+                src={getSnapshot(
+                  selectedEvidence
+                )}
                 alt="Traffic event evidence"
                 style={styles.evidenceImage}
               />
@@ -650,16 +694,33 @@ function Dashboard({ page = "dashboard" }) {
             )}
 
             <div style={styles.evidenceInfo}>
+
               <div>
-                <span>Vehicle</span>
-                <strong>{getVehicle(selectedEvidence)}</strong>
+                <span>
+                  Vehicle
+                </span>
+
+                <strong>
+                  {getVehicle(
+                    selectedEvidence
+                  )}
+                </strong>
               </div>
 
               <div>
-                <span>Timestamp</span>
-                <strong>{getTimestamp(selectedEvidence)}</strong>
+                <span>
+                  Timestamp
+                </span>
+
+                <strong>
+                  {getTimestamp(
+                    selectedEvidence
+                  )}
+                </strong>
               </div>
+
             </div>
+
           </div>
         </div>
       )}
@@ -667,73 +728,153 @@ function Dashboard({ page = "dashboard" }) {
   );
 }
 
-/* ---------- COMPONENTS ---------- */
+/* =========================================
+   KPI
+========================================= */
 
-function KPI({ label, value, description }) {
+function KPI({
+  label,
+  value,
+  description,
+}) {
   return (
     <div style={styles.kpi}>
-      <div style={styles.kpiLabel}>{label}</div>
 
-      <div style={styles.kpiValue}>{value}</div>
+      <div style={styles.kpiLabel}>
+        {label}
+      </div>
 
-      <div style={styles.kpiDescription}>{description}</div>
+      <div style={styles.kpiValue}>
+        {value}
+      </div>
+
+      <div style={styles.kpiDescription}>
+        {description}
+      </div>
+
     </div>
   );
 }
 
-function CardHeader({ title, subtitle }) {
+/* =========================================
+   CARD HEADER
+========================================= */
+
+function CardHeader({
+  title,
+  subtitle,
+}) {
   return (
     <div style={styles.cardHeader}>
+
       <div>
-        <h2 style={styles.cardTitle}>{title}</h2>
-        <p style={styles.cardSubtitle}>{subtitle}</p>
+
+        <h2 style={styles.cardTitle}>
+          {title}
+        </h2>
+
+        <p style={styles.cardSubtitle}>
+          {subtitle}
+        </p>
+
       </div>
+
     </div>
   );
 }
 
-function StatusRow({ name, status }) {
+/* =========================================
+   STATUS ROW
+========================================= */
+
+function StatusRow({
+  name,
+  status,
+}) {
   return (
     <div style={styles.statusRow}>
+
       <div style={styles.statusIndicator} />
 
-      <div style={styles.statusName}>{name}</div>
+      <div style={styles.statusName}>
+        {name}
+      </div>
 
-      <div style={styles.statusValue}>{status}</div>
+      <div style={styles.statusValue}>
+        {status}
+      </div>
+
     </div>
   );
 }
 
-function Bar({ label, value, total }) {
+/* =========================================
+   BAR
+========================================= */
+
+function Bar({
+  label,
+  value,
+  total,
+}) {
   const percentage =
-    total > 0 ? Math.round((value / total) * 100) : 0;
+    total > 0
+      ? Math.round(
+          (value / total) * 100
+        )
+      : 0;
 
   return (
     <div style={styles.barRow}>
+
       <div style={styles.barLabel}>
-        <span>{label}</span>
-        <strong>{value}</strong>
+
+        <span>
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+
       </div>
 
       <div style={styles.barTrack}>
+
         <div
           style={{
             ...styles.barFill,
-            width: `${Math.max(percentage, value > 0 ? 4 : 0)}%`,
+            width: `${Math.max(
+              percentage,
+              value > 0 ? 4 : 0
+            )}%`,
           }}
         />
+
       </div>
+
     </div>
   );
 }
 
-function Toolbar({ search, setSearch, exportCSV }) {
+/* =========================================
+   TOOLBAR
+========================================= */
+
+function Toolbar({
+  search,
+  setSearch,
+  exportCSV,
+}) {
   return (
     <div style={styles.toolbar}>
+
       <input
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder="Search events..."
+        onChange={(event) =>
+          setSearch(event.target.value)
+        }
+        placeholder="Search traffic events..."
         style={styles.searchInput}
       />
 
@@ -743,9 +884,14 @@ function Toolbar({ search, setSearch, exportCSV }) {
       >
         Export CSV
       </button>
+
     </div>
   );
 }
+
+/* =========================================
+   VIOLATION TABLE
+========================================= */
 
 function ViolationTable({
   violations,
@@ -774,61 +920,118 @@ function ViolationTable({
 
   return (
     <div style={styles.tableWrapper}>
+
       <table style={styles.table}>
+
         <thead>
+
           <tr>
-            <th style={styles.th}>EVENT</th>
-            <th style={styles.th}>VEHICLE</th>
-            <th style={styles.th}>TIMESTAMP</th>
-            <th style={styles.th}>EVIDENCE</th>
+
+            <th style={styles.th}>
+              EVENT
+            </th>
+
+            <th style={styles.th}>
+              VEHICLE
+            </th>
+
+            <th style={styles.th}>
+              TIMESTAMP
+            </th>
+
+            <th style={styles.th}>
+              EVIDENCE
+            </th>
+
           </tr>
+
         </thead>
 
         <tbody>
-          {violations.slice(0, 50).map((row, index) => {
-            const snapshot = getSnapshot(row);
 
-            return (
-              <tr key={index} style={styles.tr}>
-                <td style={styles.td}>
-                  <div style={styles.eventCell}>
-                    <span style={styles.eventDot} />
-                    {getViolationType(row)}
-                  </div>
-                </td>
+          {violations
+            .slice(0, 50)
+            .map((row, index) => {
 
-                <td style={styles.td}>
-                  {getVehicle(row)}
-                </td>
+              const snapshot =
+                getSnapshot(row);
 
-                <td style={styles.td}>
-                  {getTimestamp(row)}
-                </td>
+              return (
+                <tr
+                  key={index}
+                  style={styles.tr}
+                >
 
-                <td style={styles.td}>
-                  {snapshot ? (
-                    <button
-                      style={styles.viewButton}
-                      onClick={() => onEvidence(row)}
+                  <td style={styles.td}>
+
+                    <div
+                      style={
+                        styles.eventCell
+                      }
                     >
-                      View Evidence
-                    </button>
-                  ) : (
-                    <span style={styles.noEvidenceText}>
-                      Not available
-                    </span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+
+                      <span
+                        style={
+                          styles.eventDot
+                        }
+                      />
+
+                      {getViolationType(
+                        row
+                      )}
+
+                    </div>
+
+                  </td>
+
+                  <td style={styles.td}>
+                    {getVehicle(row)}
+                  </td>
+
+                  <td style={styles.td}>
+                    {getTimestamp(row)}
+                  </td>
+
+                  <td style={styles.td}>
+
+                    {snapshot ? (
+                      <button
+                        style={
+                          styles.viewButton
+                        }
+                        onClick={() =>
+                          onEvidence(row)
+                        }
+                      >
+                        View Evidence
+                      </button>
+                    ) : (
+                      <span
+                        style={
+                          styles.noEvidenceText
+                        }
+                      >
+                        Not available
+                      </span>
+                    )}
+
+                  </td>
+
+                </tr>
+              );
+            })}
+
         </tbody>
+
       </table>
+
     </div>
   );
 }
 
-/* ---------- PROFESSIONAL LIGHT THEME ---------- */
+/* =========================================
+   PROFESSIONAL LIGHT THEME
+========================================= */
 
 const styles = {
   app: {
@@ -846,25 +1049,28 @@ const styles = {
     bottom: 0,
     width: "250px",
     background: "#FFFFFF",
-    borderRight: "1px solid #E6EAF0",
+    borderRight:
+      "1px solid #E5E9EF",
     padding: "28px 18px",
     display: "flex",
     flexDirection: "column",
     zIndex: 10,
+    boxSizing: "border-box",
   },
 
   brand: {
     display: "flex",
     alignItems: "center",
     gap: "12px",
-    padding: "0 10px 34px",
+    padding:
+      "0 10px 34px",
   },
 
   brandMark: {
     width: "38px",
     height: "38px",
-    borderRadius: "9px",
-    background: "#1F5F8B",
+    borderRadius: "8px",
+    background: "#245B7A",
     color: "#FFFFFF",
     display: "flex",
     alignItems: "center",
@@ -881,7 +1087,7 @@ const styles = {
 
   brandSubtitle: {
     fontSize: "10px",
-    color: "#8791A1",
+    color: "#8A94A3",
     marginTop: "2px",
     letterSpacing: "0.3px",
   },
@@ -889,9 +1095,10 @@ const styles = {
   sidebarSection: {
     fontSize: "10px",
     fontWeight: 700,
-    color: "#9AA3B2",
+    color: "#9AA3B1",
     letterSpacing: "1.2px",
-    padding: "0 12px 10px",
+    padding:
+      "0 12px 10px",
   },
 
   navItem: {
@@ -899,7 +1106,7 @@ const styles = {
     border: "none",
     background: "transparent",
     color: "#687386",
-    padding: "12px 12px",
+    padding: "12px",
     marginBottom: "4px",
     borderRadius: "7px",
     display: "flex",
@@ -911,8 +1118,8 @@ const styles = {
   },
 
   navItemActive: {
-    background: "#EDF3F8",
-    color: "#1F5F8B",
+    background: "#EDF3F7",
+    color: "#245B7A",
     fontWeight: 600,
   },
 
@@ -924,7 +1131,7 @@ const styles = {
   },
 
   navIndicatorActive: {
-    background: "#1F5F8B",
+    background: "#245B7A",
   },
 
   sidebarBottom: {
@@ -936,8 +1143,9 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     padding: "13px",
-    background: "#F7F9FB",
-    border: "1px solid #E8ECF1",
+    background: "#F8FAFC",
+    border:
+      "1px solid #E7EBF0",
     borderRadius: "8px",
   },
 
@@ -945,7 +1153,7 @@ const styles = {
     width: "7px",
     height: "7px",
     borderRadius: "50%",
-    background: "#3C8B68",
+    background: "#3C8062",
   },
 
   systemTitle: {
@@ -955,7 +1163,7 @@ const styles = {
 
   systemText: {
     fontSize: "10px",
-    color: "#8A94A4",
+    color: "#8A94A3",
     marginTop: "2px",
   },
 
@@ -968,7 +1176,8 @@ const styles = {
 
   main: {
     marginLeft: "250px",
-    padding: "34px 42px 28px",
+    padding:
+      "34px 42px 28px",
     minHeight: "100vh",
     boxSizing: "border-box",
   },
@@ -976,7 +1185,8 @@ const styles = {
   header: {
     display: "flex",
     alignItems: "flex-start",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     marginBottom: "30px",
   },
 
@@ -985,7 +1195,6 @@ const styles = {
     fontSize: "10px",
     fontWeight: 700,
     letterSpacing: "1px",
-    textTransform: "uppercase",
     marginBottom: "9px",
   },
 
@@ -1009,7 +1218,8 @@ const styles = {
     alignItems: "center",
     gap: "7px",
     background: "#FFFFFF",
-    border: "1px solid #E4E8EE",
+    border:
+      "1px solid #E3E7EC",
     borderRadius: "7px",
     padding: "9px 12px",
     fontSize: "11px",
@@ -1019,24 +1229,27 @@ const styles = {
   liveDot: {
     width: "7px",
     height: "7px",
-    background: "#3C8B68",
+    background: "#3C8062",
     borderRadius: "50%",
   },
 
   hero: {
     background: "#FFFFFF",
-    border: "1px solid #E4E8EE",
+    border:
+      "1px solid #E3E7EC",
     borderRadius: "10px",
     padding: "28px 30px",
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "30px",
     marginBottom: "18px",
-    boxShadow: "0 3px 12px rgba(24, 39, 58, 0.035)",
+    boxShadow:
+      "0 3px 12px rgba(24,39,58,0.035)",
   },
 
   heroLabel: {
-    color: "#1F5F8B",
+    color: "#245B7A",
     fontSize: "10px",
     fontWeight: 700,
     letterSpacing: "1.1px",
@@ -1061,7 +1274,8 @@ const styles = {
 
   heroMetric: {
     minWidth: "180px",
-    borderLeft: "1px solid #E6EAF0",
+    borderLeft:
+      "1px solid #E5E9EF",
     paddingLeft: "28px",
     display: "flex",
     flexDirection: "column",
@@ -1078,7 +1292,7 @@ const styles = {
   heroMetricValue: {
     fontSize: "34px",
     fontWeight: 700,
-    color: "#1F5F8B",
+    color: "#245B7A",
     marginTop: "5px",
   },
 
@@ -1089,17 +1303,20 @@ const styles = {
 
   kpiGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns:
+      "repeat(4, minmax(0, 1fr))",
     gap: "14px",
     marginBottom: "18px",
   },
 
   kpi: {
     background: "#FFFFFF",
-    border: "1px solid #E4E8EE",
+    border:
+      "1px solid #E3E7EC",
     borderRadius: "9px",
     padding: "18px",
-    boxShadow: "0 2px 8px rgba(24, 39, 58, 0.025)",
+    boxShadow:
+      "0 2px 8px rgba(24,39,58,0.025)",
   },
 
   kpiLabel: {
@@ -1123,23 +1340,27 @@ const styles = {
 
   twoColumn: {
     display: "grid",
-    gridTemplateColumns: "1.4fr 1fr",
+    gridTemplateColumns:
+      "1.4fr 1fr",
     gap: "18px",
-    marginBottom: "18px",
+    marginBottom: "0",
   },
 
   card: {
     background: "#FFFFFF",
-    border: "1px solid #E4E8EE",
+    border:
+      "1px solid #E3E7EC",
     borderRadius: "10px",
     padding: "22px",
     marginBottom: "18px",
-    boxShadow: "0 3px 12px rgba(24, 39, 58, 0.03)",
+    boxShadow:
+      "0 3px 12px rgba(24,39,58,0.03)",
   },
 
   cardHeader: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     alignItems: "flex-start",
     marginBottom: "20px",
   },
@@ -1157,21 +1378,14 @@ const styles = {
     fontSize: "11px",
   },
 
-  chartArea: {
-    paddingTop: "4px",
-  },
-
-  chartAreaLarge: {
-    maxWidth: "850px",
-  },
-
   barRow: {
     marginBottom: "18px",
   },
 
   barLabel: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     fontSize: "11px",
     color: "#687386",
     marginBottom: "7px",
@@ -1186,13 +1400,13 @@ const styles = {
 
   barFill: {
     height: "100%",
-    background: "#4B7FA5",
+    background: "#4A7898",
     borderRadius: "5px",
-    transition: "width 0.3s ease",
   },
 
   statusList: {
-    borderTop: "1px solid #EDF0F4",
+    borderTop:
+      "1px solid #EDF0F4",
   },
 
   statusRow: {
@@ -1200,14 +1414,15 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     padding: "14px 0",
-    borderBottom: "1px solid #EDF0F4",
+    borderBottom:
+      "1px solid #EDF0F4",
   },
 
   statusIndicator: {
     width: "7px",
     height: "7px",
     borderRadius: "50%",
-    background: "#3C8B68",
+    background: "#3C8062",
   },
 
   statusName: {
@@ -1218,7 +1433,7 @@ const styles = {
 
   statusValue: {
     fontSize: "10px",
-    color: "#3C8B68",
+    color: "#3C8062",
     fontWeight: 600,
   },
 
@@ -1232,7 +1447,8 @@ const styles = {
 
   toolbar: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "12px",
     marginBottom: "16px",
   },
@@ -1240,7 +1456,8 @@ const styles = {
   searchInput: {
     flex: 1,
     maxWidth: "420px",
-    border: "1px solid #DDE2E9",
+    border:
+      "1px solid #DDE2E9",
     borderRadius: "6px",
     padding: "10px 12px",
     outline: "none",
@@ -1251,7 +1468,8 @@ const styles = {
   },
 
   exportButton: {
-    border: "1px solid #D6DEE7",
+    border:
+      "1px solid #D6DEE7",
     background: "#FFFFFF",
     color: "#385A75",
     borderRadius: "6px",
@@ -1279,11 +1497,13 @@ const styles = {
     letterSpacing: "0.8px",
     fontWeight: 700,
     padding: "11px 10px",
-    borderBottom: "1px solid #E6EAF0",
+    borderBottom:
+      "1px solid #E6EAF0",
   },
 
   tr: {
-    borderBottom: "1px solid #EEF1F4",
+    borderBottom:
+      "1px solid #EEF1F4",
   },
 
   td: {
@@ -1304,13 +1524,13 @@ const styles = {
   eventDot: {
     width: "6px",
     height: "6px",
-    background: "#4B7FA5",
+    background: "#4A7898",
     borderRadius: "50%",
   },
 
   viewButton: {
     border: "none",
-    background: "#EDF3F8",
+    background: "#EDF3F7",
     color: "#2E6389",
     borderRadius: "5px",
     padding: "7px 10px",
@@ -1331,92 +1551,10 @@ const styles = {
     fontSize: "12px",
   },
 
-  parkingHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "18px 0 28px",
-  },
-
-  parkingNumber: {
-    fontSize: "36px",
-    fontWeight: 700,
-    color: "#1F5F8B",
-  },
-
-  smallText: {
-    fontSize: "11px",
-    color: "#8993A2",
-  },
-
-  parkingStatus: {
-    color: "#788396",
-    fontSize: "11px",
-    textAlign: "right",
-  },
-
-  parkingGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: "10px",
-  },
-
-  parkingSlot: {
-    border: "1px solid #E4E8EE",
-    borderRadius: "7px",
-    padding: "18px",
-    background: "#FAFBFC",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
-
-  anprContent: {
-    textAlign: "center",
-    padding: "55px 20px",
-  },
-
-  anprIcon: {
-    width: "70px",
-    height: "42px",
-    border: "2px solid #4B7FA5",
-    borderRadius: "5px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    margin: "0 auto 20px",
-    color: "#315D7C",
-    fontWeight: 700,
-    fontSize: "12px",
-  },
-
-  anprTitle: {
-    fontSize: "20px",
-    margin: 0,
-    color: "#1B2638",
-  },
-
-  anprText: {
-    maxWidth: "520px",
-    margin: "10px auto",
-    color: "#7A8595",
-    fontSize: "12px",
-    lineHeight: 1.7,
-  },
-
-  anprStatus: {
-    display: "inline-block",
-    marginTop: "12px",
-    padding: "8px 12px",
-    borderRadius: "5px",
-    background: "#F0F4F7",
-    color: "#55718A",
-    fontSize: "10px",
-  },
-
   footer: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     color: "#9AA3B1",
     fontSize: "10px",
     padding: "8px 2px 0",
@@ -1425,7 +1563,8 @@ const styles = {
   modalOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(18, 27, 40, 0.48)",
+    background:
+      "rgba(18,27,40,0.48)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1440,12 +1579,14 @@ const styles = {
     background: "#FFFFFF",
     borderRadius: "10px",
     padding: "22px",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+    boxShadow:
+      "0 20px 60px rgba(0,0,0,0.18)",
   },
 
   modalHeader: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     alignItems: "flex-start",
     marginBottom: "18px",
   },
@@ -1494,11 +1635,13 @@ const styles = {
 
   evidenceInfo: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns:
+      "1fr 1fr",
     gap: "14px",
     marginTop: "18px",
     paddingTop: "18px",
-    borderTop: "1px solid #E7EBEF",
+    borderTop:
+      "1px solid #E7EBEF",
   },
 };
 
