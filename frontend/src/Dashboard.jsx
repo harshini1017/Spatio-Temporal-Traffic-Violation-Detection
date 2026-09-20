@@ -1355,10 +1355,6 @@ const styles = {
     textAlign: "right",
   },
 
-  parkingStatus strong: {
-    display: "block",
-  },
-
   parkingGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(4, 1fr)",
