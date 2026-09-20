@@ -1,27 +1,52 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+
 import Dashboard from "./Dashboard";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        <Route path="/dashboard" element={<Dashboard page="dashboard" />} />
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to="/dashboard"
+              replace
+            />
+          }
+        />
 
-        <Route path="/violations" element={<Dashboard page="violations" />} />
+        <Route
+          path="/dashboard"
+          element={
+            <Dashboard page="dashboard" />
+          }
+        />
 
-        <Route path="/analytics" element={<Dashboard page="analytics" />} />
-
-        <Route path="/parking" element={<Dashboard page="parking" />} />
-
-        <Route path="/anpr" element={<Dashboard page="anpr" />} />
+        <Route
+          path="/violations"
+          element={
+            <Dashboard page="violations" />
+          }
+        />
 
         <Route
           path="*"
-          element={<Navigate to="/dashboard" replace />}
+          element={
+            <Navigate
+              to="/dashboard"
+              replace
+            />
+          }
         />
+
       </Routes>
     </BrowserRouter>
   );
