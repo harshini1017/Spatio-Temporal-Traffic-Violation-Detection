@@ -1,6 +1,30 @@
 import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./Dashboard";
 
-export default function App() {
-  return <Dashboard />;
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+        <Route path="/dashboard" element={<Dashboard page="dashboard" />} />
+
+        <Route path="/violations" element={<Dashboard page="violations" />} />
+
+        <Route path="/analytics" element={<Dashboard page="analytics" />} />
+
+        <Route path="/parking" element={<Dashboard page="parking" />} />
+
+        <Route path="/anpr" element={<Dashboard page="anpr" />} />
+
+        <Route
+          path="*"
+          element={<Navigate to="/dashboard" replace />}
+        />
+      </Routes>
+    </BrowserRouter>
+  );
 }
+
+export default App;
