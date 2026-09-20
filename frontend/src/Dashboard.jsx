@@ -18,7 +18,11 @@ import {
 const API_BASE =
   "https://spatio-temporal-traffic-violation.onrender.com";
 
-const VIDEO_URL = "/final_video.mp4";
+const VIDEO_SOURCES = [
+  "https://cdn.jsdelivr.net/gh/harshini1017/Spatio-Temporal-Traffic-Violation-Detection@main/frontend/public/final_video.mp4",
+  "https://raw.githubusercontent.com/harshini1017/Spatio-Temporal-Traffic-Violation-Detection/main/frontend/public/final_video.mp4",
+  "/final_video.mp4",
+];
 
 /* Saranathan / Panjappur reference location */
 const MAP_LAT = 10.757285;
@@ -44,6 +48,8 @@ export default function Dashboard() {
   const [selectedEvidence, setSelectedEvidence] =
     useState(null);
 
+  const [videoIndex, setVideoIndex] =
+    useState(0);
 
   const [videoError, setVideoError] =
     useState(false);
@@ -55,6 +61,8 @@ export default function Dashboard() {
     useState("");
 
   const videoRef = useRef(null);
+
+  const videoSource = VIDEO_SOURCES[videoIndex];
 
 
   /* =========================================================
@@ -217,6 +225,13 @@ export default function Dashboard() {
   ========================================================= */
 
   const handleVideoError = () => {
+    if (videoIndex < VIDEO_SOURCES.length - 1) {
+      setVideoIndex((current) => current + 1);
+      setVideoReady(false);
+      setVideoError(false);
+      return;
+    }
+
     setVideoReady(false);
     setVideoError(true);
   };
@@ -350,7 +365,7 @@ export default function Dashboard() {
                 "Saranathan Junction, Trichy"
               }
               videoRef={videoRef}
-              videoSource={VIDEO_URL}
+              videoSource={VIDEO_SOURCES[0]}
               videoError={videoError}
               videoReady={videoReady}
               onVideoError={
@@ -755,15 +770,13 @@ function DashboardPage({
                 </strong>
 
                 <span>
-                  Verify that
-                  <b>
-                    frontend/public/final_video.mp4
-                  </b>
-                  is included in the Vercel deployment.
+                  Video source could not be loaded.
+                  The dashboard tried the CDN, GitHub and
+                  Vercel sources automatically.
                 </span>
 
                 <a
-                  href={VIDEO_URL}
+                  href={videoSource}
                   target="_blank"
                   rel="noreferrer"
                   className="open-video-btn"
@@ -795,7 +808,7 @@ function DashboardPage({
             </span>
 
             <a
-              href={VIDEO_URL}
+              href={videoSource}
               target="_blank"
               rel="noreferrer"
             >
